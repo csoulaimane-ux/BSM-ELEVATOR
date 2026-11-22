@@ -3573,18 +3573,18 @@ function status(){
 /* ---------- overlay (login / pending / migration) ---------- */
 var TB_L={fr:{welcome:'Bienvenue',sub:'Connectez-vous à votre espace de gestion.',email:'E-mail',ph:'nom@societe.ma',pass:'Mot de passe',btn:'Se connecter',wait:'Connexion…',forgot:'Mot de passe oublié ?',
   forgotMsg:'Pour réinitialiser votre mot de passe, contactez votre administrateur.',bad:'E-mail ou mot de passe incorrect.',confirm:'Confirmez d’abord votre adresse e-mail.',
-  sec:'Connexion sécurisée · Données chiffrées',help:'Besoin d’aide ?',wa:'Écrivez-nous sur WhatsApp',mail:'Écrivez-nous',admin:'Contactez votre administrateur.',
+  sec:'Connexion sécurisée · Données chiffrées',help:'Besoin d’aide ?',wa:'Écrivez-nous sur WhatsApp',mail:'Écrivez-nous',admin:'Contactez-nous.',
   priv:'Confidentialité',privTxt:'Vos données sont hébergées de façon sécurisée et transmises de façon chiffrée. Elles ne sont jamais vendues ni partagées : chaque société n’accède qu’à ses propres données.',close:'Fermer'},
  ar:{welcome:'مرحباً بكم',sub:'سجّل الدخول إلى فضاء التسيير الخاص بك.',email:'البريد الإلكتروني',ph:'nom@societe.ma',pass:'كلمة المرور',btn:'تسجيل الدخول',wait:'جارٍ تسجيل الدخول…',forgot:'نسيت كلمة المرور؟',
   forgotMsg:'لإعادة تعيين كلمة المرور، يرجى التواصل مع المسؤول.',bad:'البريد الإلكتروني أو كلمة المرور غير صحيحة.',confirm:'يرجى تأكيد بريدك الإلكتروني أولاً.',
-  sec:'اتصال آمن · بيانات مشفّرة',help:'تحتاج إلى مساعدة؟',wa:'راسلنا عبر واتساب',mail:'راسلنا',admin:'تواصل مع المسؤول.',
+  sec:'اتصال آمن · بيانات مشفّرة',help:'تحتاج إلى مساعدة؟',wa:'راسلنا عبر واتساب',mail:'راسلنا',admin:'تواصل معنا.',
   priv:'الخصوصية',privTxt:'تُستضاف بياناتكم بشكل آمن وتُنقل بشكل مشفّر. لا تُباع ولا تُشارك أبداً: كل شركة لا تصل إلا إلى بياناتها الخاصة.',close:'إغلاق'}};
 function tbLang(){try{var l=localStorage.getItem('tb_lang');return l==='ar'?'ar':'fr'}catch(e){return 'fr'}}
 function tbT(k){return (TB_L[tbLang()]||TB_L.fr)[k]}
 function tbHelp(){var sp=window.TADBIR_SUPPORT||{},w=String(sp.whatsapp||'').replace(/[^\d]/g,''),m=String(sp.email||'').trim();
   if(w)return tbT('help')+' <a href="https://wa.me/'+w+'" target="_blank" rel="noopener">'+tbT('wa')+'</a>';
   if(m)return tbT('help')+' <a href="mailto:'+E(m)+'">'+tbT('mail')+'</a>';
-  return tbT('help')+' '+tbT('admin')}
+  return tbT('help')+' '+tbT('admin').replace(/[.。]\s*$/,'')+' : <a href="mailto:info@tadbirgestion.com">info@tadbirgestion.com</a>'}
 function overlay(html,opts){
   opts=opts||{};
   var o=document.getElementById('bsmCloud');
