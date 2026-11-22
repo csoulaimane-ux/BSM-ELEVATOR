@@ -582,7 +582,7 @@ const _v14DownloadInvoicePDF=downloadInvoicePDF;downloadInvoicePDF=function(){if
  try{var lp=localStorage.getItem('nlc_last_page');if(lp&&document.getElementById(lp)&&typeof showPage==='function')showPage(lp)}catch(e){}
  try{
   var last=+localStorage.getItem('nlc_last_backup')||0,days=(Date.now()-last)/864e5;
-  if(days>7){var d=document.createElement('div');d.id='bkBanner';d.innerHTML='<b>Sauvegarde recommandée</b><br>'+(last?'Dernière sauvegarde il y a '+Math.floor(days)+' jours.':'Aucune sauvegarde effectuée.')+'<br><button class="btn" id="bkNow">Sauvegarder</button><button class="btn secondary" id="bkLater">Plus tard</button>';document.body.appendChild(d);d.style.display='block';
+  if(days>7&&!window.BSM_CLOUD_ACTIVE){var d=document.createElement('div');d.id='bkBanner'; /* V85.5.1 : pas de rappel quand les données sont synchronisées avec Supabase */d.innerHTML='<b>Sauvegarde recommandée</b><br>'+(last?'Dernière sauvegarde il y a '+Math.floor(days)+' jours.':'Aucune sauvegarde effectuée.')+'<br><button class="btn" id="bkNow">Sauvegarder</button><button class="btn secondary" id="bkLater">Plus tard</button>';document.body.appendChild(d);d.style.display='block';
    document.getElementById('bkNow').onclick=function(){try{exportBackup();localStorage.setItem('nlc_last_backup',Date.now())}catch(e){}d.remove()};
    document.getElementById('bkLater').onclick=function(){localStorage.setItem('nlc_last_backup',Date.now()-6*864e5);d.remove()}}
   if(typeof exportBackup==='function'){var o=exportBackup;window.exportBackup=function(){var r=o.apply(this,arguments);try{localStorage.setItem('nlc_last_backup',Date.now())}catch(e){}return r}}
@@ -3163,30 +3163,22 @@ function feed(){var A=ld(AK,[]).slice(),au=[];
  if(!isAdm()){var me=who();A=A.filter(function(x){return x.u===me||(x.to&&me.toUpperCase().indexOf('('+String(x.to).toUpperCase()+')')>=0)})}
  return A}
 function st(){var r=ld(RK,{});r.all=r.all||'';r.m=r.m||{};return r}
-/* V85.4 : ses propres actions ne sont pas des notifications ; une date « dans le futur » (horloge d'un autre appareil) est ramenée à maintenant */
-function myIds(){var o={},add=function(v){v=String(v==null?'':v).trim().toLowerCase();if(v)o[v]=1};
- add(who());add(window.NLC_USER);
- try{var ss=JSON.parse(sessionStorage.getItem('nlc_sess')||'null');if(ss){add(ss.u);add(ss.name)}}catch(e){}
- try{var c=window.BSMCloud&&BSMCloud.status(),mb=c&&c.member;if(mb){add(mb.full_name);add(mb.email)}}catch(e){}
- return o}
-function mine(x,ids){return !!ids[String(x.u==null?'':x.u).trim().toLowerCase()]}
-function unread(x,r,ids){var v=r.m[x.id];if(v===false)return true;if(v!==undefined)return false;
- if(mine(x,ids||myIds()))return false;
- var now=new Date().toISOString(),t=x.t>now?now:x.t;return t>r.all}
+function unread(x,r){var v=r.m[x.id];return v===false||(v===undefined&&x.t>r.all)}
 function ago(iso){var s=Math.max(0,(Date.now()-new Date(iso).getTime())/1000);
  if(s<60)return 'à l’instant';var m=Math.floor(s/60);if(m<60)return 'il y a '+m+' min';var h=Math.floor(m/60);if(h<24)return 'il y a '+h+' h';var d=Math.floor(h/24);if(d<30)return 'il y a '+d+' j';return new Date(iso).toLocaleDateString('fr-FR')}
-function count(){var r=st(),ids=myIds();return feed().slice(0,60).filter(function(x){return unread(x,r,ids)}).length}
-function refresh(){var b=$('v66-badge');if(!b)return;var n=count();b.textContent=n>99?'99+':n;b.style.display=n?'flex':'none';if($('v66-pn')&&$('v66-pn').style.display!=='none')render()}
+function count(){var r=st();return feed().filter(function(x){return unread(x,r)}).length}
+function refresh(){var b=$('v66-badge');if(!b)return;var n=count();b.textContent=n>99?'99+':n;b.style.display=n?'flex':'none';try{if(window.tbBkSync)window.tbBkSync()}catch(e){}if($('v66-pn')&&$('v66-pn').style.display!=='none')render()}
 function icon(a){return /^Télécharger|Imprim/.test(a)?'⬇':/^Créer|Ajouter/.test(a)?'＋':/Connexion/.test(a)?'🔑':/Supprim/.test(a)?'🗑':/paiement|Paiement|Encaiss/.test(a)?'💳':'•'}
 function render(){var p=$('v66-pn');if(!p)return;var r=st(),f=feed(),lim=60;
  var html='<div class="v66-h"><a href="#" id="v66-all">Marquer tous comme lus</a></div><div class="v66-l">';
  if(!f.length)html+='<div class="v66-e">Aucune activité pour le moment.</div>';
- var ids=myIds();f.slice(0,lim).forEach(function(x){var u=unread(x,r,ids);html+='<div class="v66-i'+(u?' un':'')+'" data-id="'+E(x.id)+'"><div class="v66-ic">'+icon(x.a)+'</div><div class="v66-t"><span class="v66-a">'+E(ago(x.t))+'</span><div class="v66-m"><b>'+E(x.u)+'</b> – '+E(x.a)+'</div></div><button class="v66-c'+(u?'':' rd')+'" title="'+(u?'Marquer comme lu':'Marquer comme non lu')+'" aria-label="lu/non lu"></button></div>'});
+ f.slice(0,lim).forEach(function(x){var u=unread(x,r);html+='<div class="v66-i'+(u?' un':'')+'" data-id="'+E(x.id)+'"><div class="v66-ic">'+icon(x.a)+'</div><div class="v66-t"><span class="v66-a">'+E(ago(x.t))+'</span><div class="v66-m"><b>'+E(x.u)+'</b> – '+E(x.a)+'</div></div><button class="v66-c'+(u?'':' rd')+'" title="'+(u?'Marquer comme lu':'Marquer comme non lu')+'" aria-label="lu/non lu"></button></div>'});
  if(f.length>lim)html+='<div class="v66-e">'+(f.length-lim)+' activités plus anciennes non affichées.</div>';
  p.innerHTML=html+'</div>';
+ try{if(window.tbBkSync)setTimeout(window.tbBkSync,0)}catch(e){}
  $('v66-all').onclick=function(e){e.preventDefault();var s=st();s.all=new Date().toISOString();s.m={};try{localStorage.setItem(RK,JSON.stringify(s))}catch(x){}refresh();render()};
  [].forEach.call(p.querySelectorAll('.v66-c'),function(c){c.onclick=function(e){e.stopPropagation();var id=c.parentNode.dataset.id,s=st(),x=feed().filter(function(y){return y.id===id})[0];if(!x)return;s.m[id]=unread(x,s)?true:false;try{localStorage.setItem(RK,JSON.stringify(s))}catch(z){}refresh();render()}})}
-function toggle(force){var p=$('v66-pn');if(!p)return;var show=force!=null?force:p.style.display==='none';if(show){render();p.style.display='block'}else p.style.display='none'}
+function toggle(force){var p=$('v66-pn');if(!p)return;var show=force!=null?force:p.style.display==='none';if(show){render();p.style.display='block';try{if(window.tbBkSync)window.tbBkSync()}catch(e){}}else p.style.display='none'}
 /* ---- UI ---- */
 var css=document.createElement('style');css.textContent='#v66-bell{position:relative;border:0;background:transparent;font-size:19px;cursor:pointer;padding:8px 10px;border-radius:8px}#v66-bell:hover{background:#eef2f7}#v66-badge{position:absolute;top:-2px;right:-2px;min-width:19px;height:19px;border-radius:10px;background:#e74c3c;color:#fff;font-size:10px;font-weight:800;align-items:center;justify-content:center;padding:0 4px;display:none}'
 +'#v66-pn{position:fixed;top:68px;right:12px;width:min(420px,calc(100vw - 24px));max-height:calc(100vh - 90px);background:#fff;border-radius:12px;box-shadow:0 14px 44px #0004;z-index:3000;display:none;overflow:hidden;font-family:inherit}'
@@ -5422,7 +5414,12 @@ window.tbSubBar=function(msg){
 };
 
 /* ===== 2. Sauvegarde : dans la cloche ===== */
-function bkActive(){var b=$('bkBanner');return !!(b&&b.style.display&&b.style.display!=='none')}
+function bkActive(){var b=$('bkBanner');if(!(b&&b.style.display&&b.style.display!=='none'))return false;
+ /* V85.5 : vérifier l'état réel — si une sauvegarde a été faite depuis (page Sauvegardes, autre onglet), le rappel disparaît */
+ var last=0;try{last=+localStorage.getItem('nlc_last_backup')||0}catch(e){}
+ if((Date.now()-last)/864e5<=7){b.remove();return false}
+ return true}
+window.tbBkSync=function(){try{bkSync()}catch(e){}}; /* V85.5 : appelé par la cloche après chaque affichage */
 function bkSync(){
   var bell=$('v66-bell');if(bell)bell.classList.toggle('tb-dot',bkActive());
   var pn=$('v66-pn');if(!pn)return;
