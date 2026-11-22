@@ -2358,7 +2358,6 @@ function install(){css();
   if(!$('sauvegardes')){var s=document.createElement('section');s.className='page';s.id='sauvegardes';
     s.innerHTML='<div class="welcome"><div><div class="eyebrow">Sécurité</div><h1>Sauvegardes &amp; protection des données</h1><div class="sub">Vos données sont conservées dans le navigateur ET copiées automatiquement dans une seconde mémoire interne (IndexedDB), avec des points de restauration automatiques. Téléchargez aussi régulièrement une sauvegarde en fichier : c\'est la seule protection contre la perte de l\'appareil.</div></div></div>'
     +'<div class="panel"><div class="v61-grid" id="v61-stats"></div><div class="v58-bar"><button class="v58-b v58-green" id="v61-dl">💾 Télécharger une sauvegarde complète</button><button class="v58-b v58-blue" id="v61-snap">📸 Créer un point de restauration</button><button class="v58-b" id="v61-imp" style="background:#475467">📥 Importer un fichier de sauvegarde</button><button class="v58-b" id="v61-pers" style="background:#7a5af8">🔒 Protéger le stockage</button><button class="v58-b" id="v61-clean" style="background:#667085">🧹 Nettoyer les images</button><input type="file" id="v61-file" accept=".json,application/json" style="display:none"></div></div>'
-    +'<div class="panel"><h3 style="margin:0 0 4px;font-size:14px">Détail du stockage du navigateur</h3><div style="font-size:12px;color:#667085;margin-bottom:10px">Ce qui occupe la place dans le navigateur (limite ≈5 Mo). Les images déplacées vers la mémoire interne ne sont pas comptées ici.</div><div class="tablewrap"><table><thead><tr><th>DONNÉES</th><th style="text-align:right">ÉLÉMENTS</th><th style="text-align:right">TAILLE</th><th style="width:32%">PART</th></tr></thead><tbody id="v61-det"></tbody></table></div></div>'
     +'<div class="panel"><h3 style="margin:0 0 10px;font-size:14px">Points de restauration</h3><div class="tablewrap"><table><thead><tr><th>DATE</th><th>TYPE</th><th>CONTENU</th><th>TAILLE</th><th>ACTIONS</th></tr></thead><tbody id="v61-rows"></tbody></table></div></div>';
     (document.querySelector('.content')||document.querySelector('main')||document.body).appendChild(s);
     $('v61-dl').onclick=function(){P.hydDone.then(function(){exportBackup();setTimeout(render,300)})};
@@ -2369,34 +2368,7 @@ function install(){css();
     $('v61-pers').onclick=function(){try{navigator.storage.persist().then(function(ok){notify(ok?'Stockage protégé par le navigateur.':'Le navigateur n\'a pas accordé la protection (normal sur Safari hors écran d\'accueil).');render()})}catch(e){notify('Non pris en charge.')}};
     $('v61-clean').onclick=cleanImgs}}
 function lsBytes(){var n=0;try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);n+=(k.length+(P.rawGet(k)||'').length)*2}}catch(e){}return n}
-/* V85.2 — détail du stockage du navigateur */
-var DET_KEYS={nlc_ascenseurs_demo_v4:'Données principales',nlc_ascenseurs_v13_modules:'Achats, RH et caisse',nlc_v62_modules:'Modules complémentaires',nlc_v63:'Pilotage et relances',nlc_v67:'RH : dossiers, demandes, messages',
-  nlc_avoirs_v39:'Avoirs clients',nlc_offres_v19:'Offres (devis)',nlc_v26_payroll_records:'Bulletins de paie',nlc_trash_v58:'Corbeille',nlc_bl_trash:'Corbeille des BL',nlc_ascenseurs_v13_modules_trash:'Corbeille des modules',
-  nlc_stock_damaged_v1:'Marchandise endommagée',nlc_company_v65:'Paramètres société (logo, cachet, signature)',tb_bl_import_v1:'BL importés (PDF)',nlc_v66_act:'Notifications',
-  nlc_cloud_snap:'Synchronisation : index',nlc_cloud_kvsnap:'Synchronisation : copie de référence',nlc_cloud_localcopy:'Copie gardée avant la 1re synchronisation',
-  bsm_v26_payroll_records_sauvegarde_v85_1:'Ancienne liste de paie (secours V85.1)',nlc_pre_repair:'Copie avant réparation',nlc_auth_v18:'Comptes locaux',nlc_seclog_v18:'Journal de sécurité local'};
-var DET_SUB={clients:'Clients',invoices:'Factures',products:'Produits / stock',movements:'Mouvements de stock',auditLog:'Journal d’activité',taxSettings:'Attestation fiscale',bls:'Bons de livraison',
-  purchases:'Achats',suppliers:'Fournisseurs',employees:'Employés',cashMoves:'Mouvements de caisse',calendarEvents:'Calendrier',appUsers:'Utilisateurs'};
-function detail(){var tb=$('v61-det');if(!tb)return;
-  var rows=[],small={n:0,b:0},total=0;
-  try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i),v=P.rawGet(k)||'',b=(k.length+v.length)*2;total+=b;
-    if(b<4096&&!DET_KEYS[k]){small.n++;small.b+=b;continue}
-    var r={k:k,l:DET_KEYS[k]||k,b:b,n:null,sub:[]},o=null;
-    try{o=JSON.parse(v)}catch(e){}
-    if(Array.isArray(o))r.n=o.length;
-    else if(o&&typeof o==='object'&&b>=20480){Object.keys(o).forEach(function(p){var x=o[p],sb;try{sb=JSON.stringify(x).length*2}catch(e){sb=0}
-      if(sb>=1024)r.sub.push({l:DET_SUB[p]||p,b:sb,n:Array.isArray(x)?x.length:null})});r.sub.sort(function(a,c){return c.b-a.b})}
-    rows.push(r)}}catch(e){}
-  rows.sort(function(a,c){return c.b-a.b});
-  if(small.n)rows.push({l:'Autres réglages ('+small.n+')',b:small.b,n:null,sub:[]});
-  var lim=5*1024*1024,bar=function(b,c){var p=Math.max(0.5,Math.min(100,b/lim*100));return '<div style="display:flex;align-items:center;gap:8px"><div class="v61-bar" style="flex:1;margin:0"><i style="width:'+p+'%;background:'+(c||'#1f9d55')+'"></i></div><span style="font-size:11px;color:#667085;min-width:38px;text-align:right">'+(b/lim*100).toFixed(1)+' %</span></div>'};
-  var nb=function(n){return n==null?'':String(n).replace(/\B(?=(\d{3})+(?!\d))/g,' ')};
-  tb.innerHTML=rows.map(function(r){
-    return '<tr><td><b>'+E(r.l)+'</b>'+(r.k&&r.l!==r.k?'<div style="font-size:11px;color:#98a2b3">'+E(r.k)+'</div>':'')+'</td><td style="text-align:right">'+nb(r.n)+'</td><td style="text-align:right;white-space:nowrap">'+fmtSize(r.b)+'</td><td>'+bar(r.b)+'</td></tr>'
-     +r.sub.map(function(x){return '<tr><td style="padding-left:26px;color:#475467">↳ '+E(x.l)+'</td><td style="text-align:right;color:#475467">'+nb(x.n)+'</td><td style="text-align:right;color:#475467;white-space:nowrap">'+fmtSize(x.b)+'</td><td>'+bar(x.b,'#7cc49a')+'</td></tr>'}).join('')}).join('')
-   +'<tr><td><b>Total</b></td><td></td><td style="text-align:right;white-space:nowrap"><b>'+fmtSize(total)+'</b></td><td>'+bar(total,total/lim>.85?'#d92d20':total/lim>.65?'#b54708':'#1f9d55')+'</td></tr>';
-}
-function render(){var st=$('v61-stats');if(!st)return;try{detail()}catch(e){}
+function render(){var st=$('v61-stats');if(!st)return;
   var used=lsBytes(),lim=5*1024*1024,pct=Math.min(100,Math.round(used/lim*100)),col=pct>85?'#d92d20':pct>65?'#b54708':'#1f9d55';
   var last=+(localStorage.getItem('nlc_last_backup')||0),days=last?Math.floor((Date.now()-last)/864e5):null;
   var idb=P.idbState==='ok'&&!P.failed&&!P.mirrorErr;
