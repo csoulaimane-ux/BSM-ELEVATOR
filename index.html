@@ -3509,7 +3509,7 @@ var ARR={ /* name: [getter, setter, order] ; order 'desc' = newest first */
   cashMoves:[function(){return cashMoves},function(v){cashMoves=v},'desc'],
   calendarEvents:[function(){return calendarEvents},function(v){calendarEvents=v},'asc']
 };
-var KV=['nlc_v67','nlc_avoirs_v39','nlc_offres_v19','nlc_v62_modules','nlc_v63','nlc_v26_payroll_records','nlc_trash_v58','nlc_stock_damaged_v1','nlc_company_v65','nlc_ascenseurs_v13_modules_trash','nlc_bl_trash'];
+var KV=['nlc_v67','nlc_avoirs_v39','nlc_offres_v19','nlc_v62_modules','nlc_v63','nlc_v26_payroll_records','nlc_trash_v58','nlc_stock_damaged_v1','nlc_company_v65','nlc_ascenseurs_v13_modules_trash','nlc_bl_trash','tb_bl_import_v1'];
 var TAX='__taxSettings';
 var SNAPKEY='nlc_cloud_snap',METAKEY='nlc_cloud_meta';
 var CLIENT=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
@@ -4804,8 +4804,16 @@ const f4=v=>N(v).toLocaleString('fr-FR',{minimumFractionDigits:4,maximumFraction
 const f3=v=>N(v).toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3});
 const frd=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(d||''));return m?m[3]+'/'+m[2]+'/'+m[1]:(d||'')};
 const pad=(n,l)=>String(n).padStart(l,'0');
-const PK='bsm_v26_payroll_records';
-const PR=()=>{try{const a=JSON.parse(localStorage.getItem(PK)||'[]');return Array.isArray(a)?a:[]}catch(e){return[]}};
+const PK='nlc_v26_payroll_records',PK_OLD='bsm_v26_payroll_records'; /* V85.1 : les bulletins étaient enregistrés sous bsm_… (non synchronisé) */
+const PR=()=>{let a;try{a=JSON.parse(localStorage.getItem(PK)||'[]');if(!Array.isArray(a))a=[]}catch(e){a=[]}
+ let o=null;try{o=JSON.parse(localStorage.getItem(PK_OLD)||'null')}catch(e){}
+ if(Array.isArray(o)&&o.length){const kf=p=>[p.employee,p.from,p.to,p.type].join('|'),seen=new Set(a.map(kf));o.forEach(p=>{if(p&&typeof p==='object'&&!seen.has(kf(p))){a.push(p);seen.add(kf(p))}})}
+ return a};
+const dropOldPR=()=>{try{const o=localStorage.getItem(PK_OLD);if(o==null)return;if(localStorage.getItem(PK_OLD+'_sauvegarde_v85_1')==null)localStorage.setItem(PK_OLD+'_sauvegarde_v85_1',o);localStorage.removeItem(PK_OLD)}catch(e){}};
+const migratePR=()=>{try{if(localStorage.getItem(PK_OLD)==null)return true;localStorage.setItem(PK,JSON.stringify(PR()));dropOldPR();return true}catch(e){return false}};
+/* fusion après la connexion au cloud, pour que la version du serveur ne l'écrase pas */
+if(!window.BSM_CLOUD_ACTIVE)migratePR();
+else{const mt=setInterval(()=>{try{const st=window.BSMCloud&&BSMCloud.status();if(st&&st.ready&&!st.pending&&migratePR())clearInterval(mt)}catch(e){}},3000)}
 /* ---------- paramètres ---------- */
 const FP26={t1:35,cap1:2500,t2:25,cap2:2916.67,seuil:6500},FP27={t1:45,cap1:2916.67,t2:45,cap2:2916.67,seuil:0};
 const PROFILES={
@@ -4960,7 +4968,7 @@ window.createPayslip=async function(i){
   gross:c.brut,ded:c.totalRet,net:c.net,totalGain:c.totalGain,totalRet:c.totalRet,date:new Date().toISOString().slice(0,10)};
  const recs=PR(),dup=recs.findIndex(p=>p.employee===rec.employee&&p.from===rec.from&&p.to===rec.to&&p.type===rec.type);
  if(dup>=0){const okr=await nlcConfirm('Un document existe déjà pour cette période. Le remplacer ?','Remplacer');if(!okr)return;recs.splice(dup,1)}
- recs.unshift(rec);try{localStorage.setItem(PK,JSON.stringify(recs))}catch(x){notify('Stockage plein.');return}
+ recs.unshift(rec);try{localStorage.setItem(PK,JSON.stringify(recs));dropOldPR()}catch(x){notify('Stockage plein.');return}
  try{window.NLC_HR&&NLC_HR.markDeducted(rec)}catch(x){}
  try{auditLog.unshift({dateTime:new Date().toISOString(),invoiceNo:'',action:(stc?'Solde de tout compte ':'Bulletin de paie ')+rec.employee+' '+rec.period+' (barème '+prof+')',changedBy:window.NLC_USER||'Administrateur'});persist()}catch(x){}
  printPayslip(rec)};
@@ -6008,6 +6016,7 @@ function list(){var qq=norm(q);return rows.filter(function(r){
   if(qq&&norm([r.no,r.client,r.file].join(' ')).indexOf(qq)<0)return false;return true})}
 function sum(L,k){return R2(L.reduce(function(a,r){return a+(Number(r[k])||0)},0))}
 function open(){
+  try{var fr=JSON.parse(localStorage.getItem(STORE)||'[]');if(Array.isArray(fr))rows=fr}catch(e){}
   if(document.getElementById('tbiOv')){draw();return}
   var ov=document.createElement('div');ov.id='tbiOv';
   ov.innerHTML='<div id="tbiBox" role="dialog" aria-modal="true" aria-labelledby="tbiT"><div class="h"><h2 id="tbiT">Analyse des fichiers BL (PDF)<small>N° BL, date, client, HT, TVA, TTC, montant payé, reste et statut de paiement lus dans vos PDF.</small></h2>'
