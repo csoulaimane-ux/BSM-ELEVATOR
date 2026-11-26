@@ -5882,7 +5882,7 @@ function themeItem(){
 }
 
 /* V80.92.6 : mise en forme immédiate d'une zone (utilisé par « Factures récentes » pour ne pas sauter) */
-window.tbPolish=function(root){if(!root)return;try{money(root)}catch(e){}try{pills(root)}catch(e){}try{tables(root)}catch(e){}};
+window.tbPolish=function(root){if(!root)return;try{rowActions(root)}catch(e){}try{money(root)}catch(e){}try{dupx(root)}catch(e){}try{pills(root)}catch(e){}try{tables(root)}catch(e){}try{photos(root)}catch(e){}};
 /* ===== moteur ===== */
 var busy=false,qd=false;
 function run(){
@@ -9292,30 +9292,31 @@ html body .sidebar .nav button .navtext{flex:1 1 auto;min-width:0;line-height:1.
 }}
 </style>
 <script type="text/x-nlc-defer" id="tb-recent-stable">
-/* V80.92.6 — « Factures récentes » (tableau de bord) : le tableau ne bouge plus tout seul.
-   Avant : à chaque rafraîchissement (synchro cloud…), il était redessiné en « MAD », puis converti en « DH », puis les noms rendus cliquables → les colonnes sautaient.
-   Maintenant : si les factures n'ont pas changé, l'affichage reste tel quel ; sinon il est écrit directement dans sa forme finale. */
+/* V80.92.7 — tableaux qui ne bougent plus tout seuls (tableau de bord « Factures récentes », registre des factures).
+   Avant : à chaque rafraîchissement (synchro cloud…), le tableau était redessiné « brut » puis remis en forme ~120 ms plus tard → tout sautait.
+   Maintenant : si le contenu n'a pas changé, les lignes déjà affichées sont conservées telles quelles (boutons, cases cochées compris) ;
+   sinon le tableau est mis en forme immédiatement, avant l'affichage. */
 (function(){
 'use strict';
-var us=window.updateStats;if(typeof us!=='function'||us.__tbRecent)return;
-var lastBase=null;
-function finalize(t){
-  var w=document.createTreeWalker(t,NodeFilter.SHOW_TEXT,null),n,L=[];while((n=w.nextNode()))L.push(n);
-  L.forEach(function(n){var v=n.nodeValue;if(/\bMAD\b/.test(v)&&(/\d/.test(v)||/^\s*MAD\b/.test(v)))n.nodeValue=v.replace(/\bMAD\b/g,'DH')});
+function clink(t){
   var m={};try{clients.forEach(function(c){if(c&&c.name){var k=String(c.name).trim().toLowerCase();if(k&&!(k in m))m[k]=1}})}catch(e){}
   [].forEach.call(t.querySelectorAll('tr>td:nth-child(2)'),function(td){
     if(td.querySelector('.tbCl')||td.children.length)return;var name=(td.textContent||'').trim();if(!name||!m[name.toLowerCase()])return;
     var sp=document.createElement('span');sp.className='tbCl';sp.dataset.n=name;sp.title='Ouvrir la fiche client';sp.textContent=name;td.textContent='';td.appendChild(sp)});
-  try{if(window.tbPolish)window.tbPolish(t.closest('.page')||t)}catch(e){}
 }
-var wrapped=function(){
-  var t=document.getElementById('recent'),keep=t?t.innerHTML:null;
-  var r=us.apply(this,arguments);
-  try{t=document.getElementById('recent');if(t){var base=t.innerHTML;
-    if(base===lastBase&&keep!==null){if(t.innerHTML!==keep)t.innerHTML=keep}
-    else{lastBase=base;finalize(t)}}}catch(e){}
-  return r};
-wrapped.__tbRecent=1;window.updateStats=wrapped;try{updateStats=wrapped}catch(e){}
+function polish(tb,extra){try{if(extra)extra(tb)}catch(e){}try{if(window.tbPolish)window.tbPolish(tb.closest('.page')||tb)}catch(e){}}
+function stable(name,id,extra){
+  var f=window[name];if(typeof f!=='function'||f.__tbStab)return;var last=null;
+  var w=function(){
+    var tb=document.getElementById(id),old=tb?[].slice.call(tb.childNodes):null,r=f.apply(this,arguments);
+    try{tb=document.getElementById(id);if(tb){var base=tb.innerHTML;
+      if(last!==null&&base===last&&old&&old.length){if(tb.firstChild!==old[0]||tb.childNodes.length!==old.length){tb.textContent='';old.forEach(function(n){tb.appendChild(n)})}}
+      else{last=base;polish(tb,extra)}}}catch(e){}
+    return r};
+  w.__tbStab=1;window[name]=w;
+}
+stable('updateStats','recent',clink);
+stable('renderRegister','registerrows');
 })();
 </script>
 </body></html>
