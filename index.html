@@ -9089,4 +9089,26 @@ document.addEventListener('click',function(e){
 },true);
 })();
 </script>
+<style id="tb-print-final-fix">
+/* Correctif impression facture/BL : (1) aucun bouton imprimé, (2) une seule page.
+   Cause : la règle mobile (max-width:820px) « #viewInvoiceModal .actions{display:flex!important} »
+   s'appliquait aussi à l'impression (page A4 ≈ 794 px) et battait « .no-print{display:none} ». */
+@media print{
+  html body #viewInvoiceModal .no-print,
+  html body #viewInvoiceModal .actions,
+  html body #viewInvoiceModal .panelhead,
+  html body #viewInvoiceModal #printInvoice > .panelhead,
+  html body #viewInvoiceModal #printInvoice > .actions,
+  html body #viewInvoiceModal #v21Pf,
+  html body #viewInvoiceModal button,
+  html body #viewInvoiceModal .btn{display:none!important;visibility:hidden!important;height:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;overflow:hidden!important}
+  html body #viewInvoiceModal{padding:0!important;margin:0!important;overflow:visible!important;height:auto!important;min-height:0!important}
+  html body #viewInvoiceModal #printInvoice{padding:0!important;margin:0!important;border-radius:0!important;box-shadow:none!important;height:auto!important;min-height:0!important}
+  html body #viewInvoiceModal #invoice-paper{margin:0!important;padding:0!important;height:auto!important;min-height:0!important}
+  /* dernière (ou seule) facture : pas de saut de page après, donc pas de 2e feuille vide */
+  html body #viewInvoiceModal #printInvoice .invoice-a4:last-child{page-break-after:avoid!important;break-after:avoid!important}
+  html body #viewInvoiceModal #printInvoice::after,
+  html body #viewInvoiceModal::after{content:none!important;display:none!important}
+}
+</style>
 </body></html>
