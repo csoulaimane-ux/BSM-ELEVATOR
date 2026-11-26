@@ -8784,4 +8784,23 @@ window.addEventListener('pageshow',function(){setTimeout(warm,800)});
  #sauvegardes table.tb-cards td:last-child .v58-b{flex:1 1 auto!important;white-space:normal!important;text-align:center!important;justify-content:center!important;min-width:0!important}
 }
 </style>
+<style id="tb-clients-link-css">
+#clientrows td[data-label="CLIENT"] b{color:var(--blue,#1769b4);font-weight:700;text-decoration:underline;cursor:pointer}
+#clientrows td[data-label="CLIENT"] b:hover{opacity:.8}
+@media print{#clientrows td[data-label="CLIENT"] b{color:inherit!important;text-decoration:none!important;cursor:auto}}
+</style>
+<script id="tb-clients-link">
+/* Page Clients : le nom du client ouvre la fiche client (comme dans le registre des factures) */
+(function(){
+document.addEventListener('click',function(e){
+  var b=e.target.closest&&e.target.closest('#clientrows td[data-label="CLIENT"] b');if(!b)return;
+  var tr=b.closest('tr'),name=(b.textContent||'').trim(),ci=-1;
+  try{var ck=tr.querySelector('.tbc-c'),k=ck&&ck.getAttribute('data-k');
+    if(k){ci=clients.findIndex(function(c){return c&&(String(c.name)+'|'+String(c.ice||''))===k})}
+    if(ci<0)ci=clients.findIndex(function(c){return c&&String(c.name).trim()===name})}catch(x){}
+  if(ci<0||typeof window.v77Fiche!=='function')return;
+  e.preventDefault();e.stopPropagation();window.v77Fiche(ci,'fact')
+},true);
+})();
+</script>
 </body></html>
