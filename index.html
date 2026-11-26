@@ -3774,7 +3774,7 @@ function purgeForeign(){
 }
 window.tbCompanyId=function(){return company?String(company.id):null};
 window.tbBackupOk=function(d){var c=window.tbCompanyId();if(c&&d&&d.company&&String(d.company)!==c){note('Cette sauvegarde appartient à une autre société : import refusé pour ne pas mélanger les données.');return false}return true};
-window.BSMCloud={companyId:window.tbCompanyId,purgeForeign:purgeForeign,lock:function(){if(sb)logout();else window.__bsmCloudLockPending=1},status:function(){return {ready:ready,online:online,pending:pending,member:member}},syncNow:function(){return cycle()}};
+window.BSMCloud={get company(){return company},isolation:function(){return {company:company&&company.id,blocked:isoBlocked,alarm:isoAlarmed}},companyId:window.tbCompanyId,purgeForeign:purgeForeign,lock:function(){if(sb)logout();else window.__bsmCloudLockPending=1},status:function(){return {ready:ready,online:online,pending:pending,member:member}},syncNow:function(){return cycle()}};
 
 /* ---------- start ---------- */
 async function start(){
@@ -3806,14 +3806,19 @@ async function afterAuth(){
 }
 
 /* ---------- read everything from the server ---------- */
+/* V80.87 — garde d'isolation : toute ligne dont company_id ≠ société connectée est ignorée et signalée */
+var isoBlocked=0;
+function rowOk(r){return !!r&&(r.company_id==null?false:String(r.company_id)===String(company&&company.id))}
+function sameCo(a){var ok=a.filter(rowOk);if(ok.length!==a.length){isoBlocked+=a.length-ok.length;try{console.warn('Isolation : '+(a.length-ok.length)+' ligne(s) d\u2019une autre société ignorée(s)')}catch(e){}}return ok}
 async function fetchAll(table,since){
   var out=[],from=0,size=1000;
   for(;;){
-    var q=sb.from(table).select('*');
+    if(!company||company.id==null)throw new Error('Société inconnue : chargement refusé (isolation des données).');
+    var q=sb.from(table).select('*').eq('company_id',company.id); /* V80.87 — ISOLATION : jamais de ligne d'une autre société */
     if(since)q=q.gt('updated_at',since);
     var r=await q.order('updated_at',{ascending:true}).range(from,from+size-1);
     if(r.error)throw r.error;
-    out=out.concat(r.data||[]);if(!r.data||r.data.length<size)break;from+=size;
+    out=out.concat(sameCo(r.data||[]));if(!r.data||r.data.length<size)break;from+=size;
   }
   return out;
 }
@@ -3847,6 +3852,8 @@ async function initialSync(){
   var coId=company&&company.id,stamp=raw(TENANT);
   /* V80.86 — isolation stricte : des données locales dont la société n'est pas prouvée ne sont JAMAIS « de confiance » (ni envoyées, ni fusionnées) */
   var foreign=!!((stamp&&stamp!==String(coId))||(meta&&meta.company&&String(meta.company)!==String(coId)));
+  /* V80.87 — données locales SANS cachet (anciennes versions) : si la société n'est pas NLC, on ne les réutilise jamais */
+  if(!foreign&&!stamp&&!(meta&&meta.company)&&localHasData()&&!isNlcCo()){var legacy=(ARR.clients[0]()||[]).length+(ARR.invoices[0]()||[]).length+(ARR.bls[0]()||[]).length;if(legacy){foreign=true}}
   var trusted=!!(!foreign&&meta&&meta.user===me.id&&String(meta.company||'')===String(coId));
   if(foreign){keepLocalCopy('autre-societe');wipeLocal();meta=null;known={}}
   if(!trusted&&!isNlcCo())stripSeed();
@@ -3893,6 +3900,9 @@ async function initialSync(){
   if(firstTime)KV.forEach(function(k){if(!(k in kvSnap)){setRaw(k,null)}});
   setRaw(METAKEY,JSON.stringify({since:new Date().toISOString(),user:me.id,company:coId}));setRaw(TENANT,String(coId));
   saveLocal();saveSnap();
+  /* V80.88 — stockage plein : le serveur est la référence, on supprime les copies locales redondantes */
+  if(!foreign){try{setRaw('nlc_pre_repair',null);var tot=0;for(var ii=0;ii<localStorage.length;ii++){var kk=localStorage.key(ii);tot+=(kk.length+(localStorage.getItem(kk)||'').length)*2}
+    if(tot/1048576>3.5){setRaw('nlc_cloud_localcopy',null);setRaw('nlc_bl_trash',raw('nlc_bl_trash')&&raw('nlc_bl_trash').length>200000?'[]':raw('nlc_bl_trash'))}}catch(e){}}
   await cycle(true);
   /* changement de société sur cet appareil : on redémarre l'application à propre (identité, logo, cachet, attestation, mémoire) */
   if(foreign){try{location.reload()}catch(e){}return new Promise(function(){})}
@@ -3903,7 +3913,7 @@ function looksNetwork(e){var m=String(e&&(e.message||e)||'');return /fetch|netwo
 async function pushRecord(c,r,del){
   var k=c+'|'+r._id,s=snap[k],cs,delta=null;
   if(c!=='products'&&!del&&s&&BASE[k]){try{
-    var cur=await sb.from('records').select('data,updated_at,deleted').eq('collection',c).eq('id',String(r._id)).maybeSingle();
+    var cur=await sb.from('records').select('data,updated_at,deleted').eq('company_id',company.id).eq('collection',c).eq('id',String(r._id)).maybeSingle();
     if(cur&&!cur.error&&cur.data&&!cur.data.deleted&&cur.data.data&&canon(cur.data.data)!==BASE[k]){
       setInto(r,merge3(JSON.parse(BASE[k]),r,cur.data.data));setBase(k,canon(cur.data.data));saveLocal();dirtyUI=true}
   }catch(e){if(looksNetwork(e))throw e}}
@@ -3925,6 +3935,7 @@ async function pushRecord(c,r,del){
   }
   delete failures[k];
   var row=res.data;
+  if(row&&row.company_id!=null&&String(row.company_id)!==String(company.id)){isoAlarm('écriture');throw new Error('Isolation : le serveur a écrit dans une autre société — synchronisation bloquée.')}
   if(del){delete snap[k];delete BASE[k];return}
   if(c==='products'&&row&&row.data&&N(row.data.qty)!==N(r.qty)){r.qty=N(row.data.qty);saveLocal();dirtyUI=true}
   if(c!=='products'){snap[k]={h:hash(cs),q:N(r.qty)};setBase(k,cs);if(canon(r)!==cs)dirtyUI=true}  /* ce qui a réellement été envoyé (r a pu être fusionné entre-temps) */
@@ -3954,7 +3965,7 @@ async function cycle(force){
     }
     for(var x=0;x<kvJobs.length;x++){
       if(kvJobs[x][0]!==TAX){try{
-        var sv=await sb.from('kv').select('value').eq('key',kvJobs[x][0]).maybeSingle();
+        var sv=await sb.from('kv').select('value').eq('company_id',company.id).eq('key',kvJobs[x][0]).maybeSingle();
         if(sv&&!sv.error&&sv.data&&sv.data.value!=null&&sv.data.value!==kvSnap[kvJobs[x][0]]){
           var mv=JSON.stringify(merge3(kvSnap[kvJobs[x][0]]==null?null:JSON.parse(kvSnap[kvJobs[x][0]]),JSON.parse(kvJobs[x][1]),JSON.parse(sv.data.value)));
           setRaw(kvJobs[x][0],mv);kvJobs[x][1]=mv;dirtyUI=true}
@@ -3972,6 +3983,7 @@ async function cycle(force){
 
 /* ---------- receive changes from colleagues ---------- */
 function applyRow(r){
+  if(!rowOk(r)){isoBlocked++;return false} /* V80.87 — jamais d'application d'une ligne d'une autre société */
   if(r.client_id===CLIENT)return false;
   if(r.updated_at>lastSeen)lastSeen=r.updated_at;
   if(r.key!==undefined){
@@ -4004,6 +4016,10 @@ function applyRow(r){
   snap[k]={h:hash(rc),q:N(r.data.qty)};setBase(k,rc);
   return true;
 }
+/* V80.87 — alarme d'isolation : arrête la synchronisation si le serveur renvoie des données d'une autre société */
+var isoAlarmed=false;
+function isoAlarm(w){if(isoAlarmed)return;isoAlarmed=true;ready=false;stopLoops();
+  try{alert('PROTECTION DES DONNÉES\n\nLe serveur a renvoyé / enregistré des données d’une AUTRE société ('+w+').\nLa synchronisation est arrêtée pour ne pas mélanger les sociétés.\n\nContactez le support Tadbir et exécutez le script de contrôle (isolation-supabase.sql).')}catch(e){}}
 var chan=null,loopT=null,pollT=null,accT=null;
 function startLoops(){
   stopLoops();
