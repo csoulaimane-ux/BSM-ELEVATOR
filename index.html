@@ -247,8 +247,8 @@ function restore(){try{let d=JSON.parse(localStorage.getItem(STORE_KEY)||'null')
 var TB_BK_SKIP=/^(nlc_ascenseurs_demo_v4|nlc_ascenseurs_v13_modules|nlc_auth_v18|nlc_seclog_v18|nlc_sess|nlc_cloud_.*|nlc_last_.*|nlc_v61.*|nlc_pre_repair|nlc_nav_groups|tb_aichat.*|tb_lang|tb_theme|tb_force_safe|tb_verify_tmp)$/;
 function tbBackupKeys(){var o={},P=window.__nlcV61||{},C=P.cache||{};try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(!/^(nlc_|bsm_|tb_)/.test(k)||TB_BK_SKIP.test(k))continue;var v=localStorage.getItem(k);if(v&&v.indexOf('"idb:h')>=0)v=v.replace(/"idb:(h[a-z0-9]+)"/g,function(m,h){return C[h]?JSON.stringify(C[h]):m});o[k]=v}}catch(e){}return o}
 function tbRestoreKeys(d){if(!d||!d.allKeys||typeof d.allKeys!=='object')return;Object.keys(d.allKeys).forEach(function(k){if(!/^(nlc_|bsm_|tb_)/.test(k)||TB_BK_SKIP.test(k))return;if(k==='nlc_company_v65'&&!window.tbSameApp(d.app))return;var v=d.allKeys[k];if(typeof v==='string')localStorage.setItem(k,v)})}
-function exportBackup(){let data={app:'Tadbir',version:8,exportedAt:new Date().toISOString(),clients,invoices,products,movements,bls,purchases,suppliers,employees,cashMoves,calendarEvents,appUsers,payrollRecords:(function(){try{return JSON.parse(localStorage.getItem('nlc_v26_payroll_records')||'[]')}catch(e){return[]}})(),taxSettings,auditLog,trash:JSON.parse(localStorage.getItem(V13_KEY+'_trash')||'[]'),trashV58:(function(){try{return JSON.parse(localStorage.getItem('nlc_trash_v58')||'[]')}catch(e){return[]}})(),avoirs:(()=>{try{return JSON.parse(localStorage.getItem('nlc_avoirs_v39')||'[]')}catch(e){return []}})(),nlcExtra:{offres:localStorage.getItem('nlc_offres_v19'),v62:localStorage.getItem('nlc_v62_modules'),company:localStorage.getItem('nlc_company_v65'),hr:localStorage.getItem('nlc_v67')},stockDamaged:(function(){try{return JSON.parse(localStorage.getItem('nlc_stock_damaged_v1')||'null')}catch(e){return null}})(),companyName:(companyInfo&&companyInfo.name)||'',allKeys:tbBackupKeys()};let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});let a=document.createElement('a');let url=URL.createObjectURL(blob);a.href=url;a.download=(String((companyInfo&&companyInfo.name)||'Tadbir').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'')||'Tadbir')+'_Sauvegarde_'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('Sauvegarde téléchargée.');}
-function importBackup(file){if(!file)return;let reader=new FileReader();reader.onload=async()=>{try{let d=JSON.parse(reader.result);if((d.app!=='Tadbir'&&d.app!=='NLC ASCENSEURS'&&d.app!=='BSM ELEVATOR')||(!window.tbSameApp(d.app)&&!confirm('Cette sauvegarde provient de « '+d.app+' ». L’importer dans « '+window.NLC_APP+' » ?'))||!Array.isArray(d.clients)||!Array.isArray(d.invoices)||!Array.isArray(d.products)||!Array.isArray(d.movements))throw new Error('Format invalide');if(d.companyName&&companyInfo&&companyInfo.name&&d.companyName!==companyInfo.name&&!(await nlcConfirm('ATTENTION : cette sauvegarde appartient à « '+d.companyName+' » et non à « '+companyInfo.name+' ». L’importer remplacerait les données de « '+companyInfo.name+' ». Continuer quand même ?','Importer quand même')))return;if(!(await nlcConfirm('Importer cette sauvegarde remplacera les données actuellement présentes sur cet appareil. Continuer ?','Importer')))return;clients=d.clients;invoices=d.invoices;products=d.products;movements=d.movements;if(Array.isArray(d.bls))bls=d.bls;if(Array.isArray(d.avoirs))localStorage.setItem('nlc_avoirs_v39',JSON.stringify(d.avoirs));if(d.stockDamaged&&typeof d.stockDamaged==='object')localStorage.setItem('nlc_stock_damaged_v1',JSON.stringify(d.stockDamaged));if(Array.isArray(d.purchases))purchases=d.purchases;if(Array.isArray(d.suppliers))suppliers=d.suppliers;if(Array.isArray(d.employees))employees=d.employees;if(Array.isArray(d.cashMoves))cashMoves=d.cashMoves;if(Array.isArray(d.calendarEvents))calendarEvents=d.calendarEvents;if(Array.isArray(d.appUsers))appUsers=d.appUsers;if(Array.isArray(d.payrollRecords)){localStorage.setItem('nlc_v26_payroll_records',JSON.stringify(d.payrollRecords))}if(d.taxSettings&&typeof d.taxSettings==='object')taxSettings={...taxSettings,...d.taxSettings};if(Array.isArray(d.auditLog))auditLog=d.auditLog;if(Array.isArray(d.trash))localStorage.setItem(V13_KEY+'_trash',JSON.stringify(d.trash));if(Array.isArray(d.trashV58))localStorage.setItem('nlc_trash_v58',JSON.stringify(d.trashV58));if(d.nlcExtra&&typeof d.nlcExtra==='object'){try{if(typeof d.nlcExtra.offres==='string')localStorage.setItem('nlc_offres_v19',d.nlcExtra.offres);if(typeof d.nlcExtra.v62==='string')localStorage.setItem('nlc_v62_modules',d.nlcExtra.v62);if(typeof d.nlcExtra.company==='string'&&window.tbSameApp(d.app))localStorage.setItem('nlc_company_v65',d.nlcExtra.company);if(typeof d.nlcExtra.hr==='string')localStorage.setItem('nlc_v67',d.nlcExtra.hr)}catch(e){}}try{tbRestoreKeys(d)}catch(e){console.warn(e)}v14Migrate();v13Save();persist();fillSelect();renderClients();renderRegister();updateStats();renderStock();renderBLPage();refreshInvoiceProductChoices();notify('Sauvegarde importée avec succès.');}catch(e){notify('Fichier invalide ou sauvegarde non reconnue.');}};reader.readAsText(file);}
+function exportBackup(){let data={app:'Tadbir',version:8,exportedAt:new Date().toISOString(),company:(window.tbCompanyId?window.tbCompanyId():null),clients,invoices,products,movements,bls,purchases,suppliers,employees,cashMoves,calendarEvents,appUsers,payrollRecords:(function(){try{return JSON.parse(localStorage.getItem('nlc_v26_payroll_records')||'[]')}catch(e){return[]}})(),taxSettings,auditLog,trash:JSON.parse(localStorage.getItem(V13_KEY+'_trash')||'[]'),trashV58:(function(){try{return JSON.parse(localStorage.getItem('nlc_trash_v58')||'[]')}catch(e){return[]}})(),avoirs:(()=>{try{return JSON.parse(localStorage.getItem('nlc_avoirs_v39')||'[]')}catch(e){return []}})(),nlcExtra:{offres:localStorage.getItem('nlc_offres_v19'),v62:localStorage.getItem('nlc_v62_modules'),company:localStorage.getItem('nlc_company_v65'),hr:localStorage.getItem('nlc_v67')},stockDamaged:(function(){try{return JSON.parse(localStorage.getItem('nlc_stock_damaged_v1')||'null')}catch(e){return null}})(),companyName:(companyInfo&&companyInfo.name)||'',allKeys:tbBackupKeys()};let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});let a=document.createElement('a');let url=URL.createObjectURL(blob);a.href=url;a.download=(String((companyInfo&&companyInfo.name)||'Tadbir').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_|_$/g,'')||'Tadbir')+'_Sauvegarde_'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('Sauvegarde téléchargée.');}
+function importBackup(file){if(!file)return;let reader=new FileReader();reader.onload=async()=>{try{let d=JSON.parse(reader.result);if(window.tbBackupOk&&!window.tbBackupOk(d))return;if((d.app!=='Tadbir'&&d.app!=='NLC ASCENSEURS'&&d.app!=='BSM ELEVATOR')||(!window.tbSameApp(d.app)&&!confirm('Cette sauvegarde provient de « '+d.app+' ». L’importer dans « '+window.NLC_APP+' » ?'))||!Array.isArray(d.clients)||!Array.isArray(d.invoices)||!Array.isArray(d.products)||!Array.isArray(d.movements))throw new Error('Format invalide');if(d.companyName&&companyInfo&&companyInfo.name&&d.companyName!==companyInfo.name&&!(await nlcConfirm('ATTENTION : cette sauvegarde appartient à « '+d.companyName+' » et non à « '+companyInfo.name+' ». L’importer remplacerait les données de « '+companyInfo.name+' ». Continuer quand même ?','Importer quand même')))return;if(!(await nlcConfirm('Importer cette sauvegarde remplacera les données actuellement présentes sur cet appareil. Continuer ?','Importer')))return;clients=d.clients;invoices=d.invoices;products=d.products;movements=d.movements;if(Array.isArray(d.bls))bls=d.bls;if(Array.isArray(d.avoirs))localStorage.setItem('nlc_avoirs_v39',JSON.stringify(d.avoirs));if(d.stockDamaged&&typeof d.stockDamaged==='object')localStorage.setItem('nlc_stock_damaged_v1',JSON.stringify(d.stockDamaged));if(Array.isArray(d.purchases))purchases=d.purchases;if(Array.isArray(d.suppliers))suppliers=d.suppliers;if(Array.isArray(d.employees))employees=d.employees;if(Array.isArray(d.cashMoves))cashMoves=d.cashMoves;if(Array.isArray(d.calendarEvents))calendarEvents=d.calendarEvents;if(Array.isArray(d.appUsers))appUsers=d.appUsers;if(Array.isArray(d.payrollRecords)){localStorage.setItem('nlc_v26_payroll_records',JSON.stringify(d.payrollRecords))}if(d.taxSettings&&typeof d.taxSettings==='object')taxSettings={...taxSettings,...d.taxSettings};if(Array.isArray(d.auditLog))auditLog=d.auditLog;if(Array.isArray(d.trash))localStorage.setItem(V13_KEY+'_trash',JSON.stringify(d.trash));if(Array.isArray(d.trashV58))localStorage.setItem('nlc_trash_v58',JSON.stringify(d.trashV58));if(d.nlcExtra&&typeof d.nlcExtra==='object'){try{if(typeof d.nlcExtra.offres==='string')localStorage.setItem('nlc_offres_v19',d.nlcExtra.offres);if(typeof d.nlcExtra.v62==='string')localStorage.setItem('nlc_v62_modules',d.nlcExtra.v62);if(typeof d.nlcExtra.company==='string'&&window.tbSameApp(d.app))localStorage.setItem('nlc_company_v65',d.nlcExtra.company);if(typeof d.nlcExtra.hr==='string')localStorage.setItem('nlc_v67',d.nlcExtra.hr)}catch(e){}}try{tbRestoreKeys(d)}catch(e){console.warn(e)}v14Migrate();v13Save();persist();fillSelect();renderClients();renderRegister();updateStats();renderStock();renderBLPage();refreshInvoiceProductChoices();notify('Sauvegarde importée avec succès.');}catch(e){notify('Fichier invalide ou sauvegarde non reconnue.');}};reader.readAsText(file);}
 function fillSelect(){let s=document.getElementById('clientselect');s.innerHTML='<option value="">Sélectionner un client</option>'+clients.map((c,i)=>`<option value="${i}">${escapeHTML(c.name)}</option>`).join('')}
 function fillClient(){let c=clients[document.getElementById('clientselect').value];if(!c)return;ice.value=c.ice;address.value=c.address;phone.value=c.phone;email.value=c.email}
 function renderClients(){clientrows.innerHTML=clients.map(c=>`<tr><td><b>${escapeHTML(c.name)}</b></td><td>${escapeHTML(c.ice||'—')}</td><td>${escapeHTML(c.city||'—')}</td><td>${escapeHTML(c.phone||'—')}</td><td>${escapeHTML(c.email||'—')}</td></tr>`).join('');clientcount.textContent=clients.length+' clients';}
@@ -3517,7 +3517,7 @@ var ARR={ /* name: [getter, setter, order] ; order 'desc' = newest first */
 };
 var KV=['nlc_v67','nlc_avoirs_v39','nlc_offres_v19','nlc_v62_modules','nlc_v63','nlc_v26_payroll_records','nlc_trash_v58','nlc_stock_damaged_v1','nlc_company_v65','nlc_ascenseurs_v13_modules_trash','nlc_bl_trash','tb_bl_import_v1'];
 var TAX='__taxSettings';
-var SNAPKEY='nlc_cloud_snap',METAKEY='nlc_cloud_meta';
+var SNAPKEY='nlc_cloud_snap',METAKEY='nlc_cloud_meta',TENANT='nlc_cloud_tenant'; /* V80.86 : cachet = société propriétaire des données locales */
 var CLIENT=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
 
 /* ---------- small helpers ---------- */
@@ -3762,8 +3762,19 @@ async function recheckAccess(){
 function loadingView(t){overlay('<h2>'+E(t||'Chargement des données…')+'</h2><div class="bc-spin"></div>')}
 function errorView(t){var o=overlay('<h2>Connexion impossible</h2><p>'+E(t)+'</p><button class="bc-btn" id="bcRetry">Réessayer</button>');o.querySelector('#bcRetry').onclick=start}
 
-async function logout(){try{await sb.auth.signOut()}catch(e){}me=null;member=null;company=null;access=null;ready=false;stopLoops();tbShowCompany();tbCompanyExtras();try{sessionStorage.removeItem('nlc_sess')}catch(e){}document.body.classList.remove('authed');loginView()}
-window.BSMCloud={lock:function(){if(sb)logout();else window.__bsmCloudLockPending=1},status:function(){return {ready:ready,online:online,pending:pending,member:member}},syncNow:function(){return cycle()}};
+async function logout(){try{await sb.auth.signOut()}catch(e){}me=null;member=null;company=null;access=null;ready=false;stopLoops();try{if(!pending&&online){keepLocalCopy('deconnexion');wipeLocal();setRaw(METAKEY,null);setRaw(TENANT,null)}}catch(e){}tbShowCompany();tbCompanyExtras();try{sessionStorage.removeItem('nlc_sess')}catch(e){}document.body.classList.remove('authed');loginView()}
+function purgeForeign(){
+  if(isNlcCo()){note('Cette action concerne uniquement les sociétés autres que NLC ASCENSEURS.');return}
+  if(!confirm('Retirer de « '+(company&&company.name||'cette société')+' » les clients et factures de démonstration / importés de NLC ASCENSEURS ?\n\nLes clients utilisés par au moins une facture ou un BL de votre société sont conservés (clients partagés).'))return;
+  var b=[(ARR.clients[0]()||[]).length,(ARR.invoices[0]()||[]).length];
+  stripSeed();saveLocal();
+  var a=[(ARR.clients[0]()||[]).length,(ARR.invoices[0]()||[]).length];
+  note((b[0]-a[0])+' client(s) et '+(b[1]-a[1])+' facture(s) NLC retiré(s).');
+  refreshUI();cycle(true)
+}
+window.tbCompanyId=function(){return company?String(company.id):null};
+window.tbBackupOk=function(d){var c=window.tbCompanyId();if(c&&d&&d.company&&String(d.company)!==c){note('Cette sauvegarde appartient à une autre société : import refusé pour ne pas mélanger les données.');return false}return true};
+window.BSMCloud={companyId:window.tbCompanyId,purgeForeign:purgeForeign,lock:function(){if(sb)logout();else window.__bsmCloudLockPending=1},status:function(){return {ready:ready,online:online,pending:pending,member:member}},syncNow:function(){return cycle()}};
 
 /* ---------- start ---------- */
 async function start(){
@@ -3809,7 +3820,7 @@ async function fetchAll(table,since){
 function localHasData(){return Object.keys(ARR).some(function(c){var a=ARR[c][0]();return Array.isArray(a)&&a.length})}
 function isNlcCo(){return !!(company&&/\bNLC\b/i.test(company.name||''))}
 function keepLocalCopy(why){try{setRaw('nlc_cloud_localcopy',JSON.stringify({at:new Date().toISOString(),why:why,main:raw('nlc_ascenseurs_demo_v4'),v13:raw('nlc_ascenseurs_v13_modules')}))}catch(e){}}
-function wipeLocal(){Object.keys(ARR).forEach(function(c){try{ARR[c][1]([])}catch(e){}});KV.forEach(function(k){setRaw(k,null)});setRaw(SNAPKEY,null);setRaw('nlc_cloud_kvsnap',null);snap={};kvSnap={};BASE={};saveLocal()}
+function wipeLocal(){Object.keys(ARR).forEach(function(c){try{ARR[c][1]([])}catch(e){}});KV.forEach(function(k){setRaw(k,null)});setRaw(SNAPKEY,null);setRaw('nlc_cloud_kvsnap',null);['nlc_v66_act','nlc_v66_notif','nlc_v66_read','nlc_situation_cfg','nlc_loan_sim','nlc_loan_sim_hidden','bsm_v26_payroll_records'].forEach(function(k){setRaw(k,null)});snap={};kvSnap={};BASE={};saveLocal()}
 /* données de démonstration NLC intégrées au fichier : jamais transmises à une autre société */
 var SEED_CLIENTS=['AMANAH IMMO TB SARL','BSM ELEVATOR','CLINIQUE CHIFAE','ARI INVESTMENTS SARL','HEMG','MENARA PARCK',"Al Amane pour l'aménagement et l'habitation",'NORCOF','IMMOBILIERE SAKIFA','YEMRAD','STE STACEM MAROC','STE GOURKA CONSTRUCTION SARL'];
 var SEED_PRODUCTS={'CAB-001':'Mécanisme de porte cabine','TRC-010':'Câble de traction Ø10','GUI-T70':'Guide T70'};
@@ -3833,8 +3844,11 @@ async function initialSync(){
   ensureIds();
   var meta=jget(METAKEY,null),known=loadSnapHashes(),serverEmpty=!rows.length&&!kv.length;
   /* V80.84 — isolation : les données locales d'une AUTRE société ne sont jamais envoyées ni mélangées */
-  var coId=company&&company.id,trusted=!!(meta&&meta.user===me.id&&(!meta.company||meta.company===coId));
-  if(meta&&meta.company&&meta.company!==coId){keepLocalCopy('autre-societe');wipeLocal();meta=null;known={}}
+  var coId=company&&company.id,stamp=raw(TENANT);
+  /* V80.86 — isolation stricte : des données locales dont la société n'est pas prouvée ne sont JAMAIS « de confiance » (ni envoyées, ni fusionnées) */
+  var foreign=!!((stamp&&stamp!==String(coId))||(meta&&meta.company&&String(meta.company)!==String(coId)));
+  var trusted=!!(!foreign&&meta&&meta.user===me.id&&String(meta.company||'')===String(coId));
+  if(foreign){keepLocalCopy('autre-societe');wipeLocal();meta=null;known={}}
   if(!trusted&&!isNlcCo())stripSeed();
   if(serverEmpty){
     if(localHasData()&&member.role==='Administrateur'){
@@ -3842,7 +3856,7 @@ async function initialSync(){
       if(okUp){
         loadingView('Envoi des données de cet appareil vers le serveur…');
         snap={};kvSnap={};BASE={};             /* everything local is new → full upload */
-        setRaw(METAKEY,JSON.stringify({since:new Date().toISOString(),user:me.id,company:coId}));
+        setRaw(METAKEY,JSON.stringify({since:new Date().toISOString(),user:me.id,company:coId}));setRaw(TENANT,String(coId));
         await cycle(true);return;
       }
       keepLocalCopy('refus-envoi');wipeLocal();
@@ -3851,7 +3865,7 @@ async function initialSync(){
 
   /* index server rows */
   var byKey={};rows.forEach(function(r){byKey[r.collection+'|'+r.id]=r});
-  var firstTime=!meta||meta.user!==me.id;
+  var firstTime=!trusted;
   if(firstTime&&localHasData()&&!serverEmpty){ /* keep a safety copy of what this device had before taking the server version */
     try{setRaw('nlc_cloud_localcopy',JSON.stringify({at:new Date().toISOString(),main:raw('nlc_ascenseurs_demo_v4'),v13:raw('nlc_ascenseurs_v13_modules')}))}catch(e){}
   }
@@ -3877,9 +3891,11 @@ async function initialSync(){
     setRaw(r.key,r.value);kvSnap[r.key]=r.value;
   });
   if(firstTime)KV.forEach(function(k){if(!(k in kvSnap)){setRaw(k,null)}});
-  setRaw(METAKEY,JSON.stringify({since:new Date().toISOString(),user:me.id,company:coId}));
+  setRaw(METAKEY,JSON.stringify({since:new Date().toISOString(),user:me.id,company:coId}));setRaw(TENANT,String(coId));
   saveLocal();saveSnap();
   await cycle(true);
+  /* changement de société sur cet appareil : on redémarre l'application à propre (identité, logo, cachet, attestation, mémoire) */
+  if(foreign){try{location.reload()}catch(e){}return new Promise(function(){})}
 }
 
 /* ---------- push local changes ---------- */
@@ -3917,6 +3933,7 @@ async function pushRecord(c,r,del){
 }
 async function cycle(force){
   if(!sb||!me||(!ready&&!force)||busy)return;
+  if(company&&raw(TENANT)&&raw(TENANT)!==String(company.id)){note('Protection : ces données locales appartiennent à une autre société — envoi bloqué.');return}
   busy=true;status();
   try{
     ensureIds();
@@ -4030,6 +4047,7 @@ function installAdmin(){
    +'<div class="tablewrap"><table><thead><tr><th>NOM</th><th>E-MAIL</th><th>RÔLE</th><th>ACCÈS</th><th></th></tr></thead><tbody id="bcMemRows"><tr><td colspan="5">Chargement…</td></tr></tbody></table></div>'
    +'<div id="bcInvBox"></div>'
    +'<div class="mutednote" style="margin-top:10px">Invitez un employé avec son e-mail, puis demandez à votre fournisseur Tadbir de créer son compte : il recevra son e-mail et son mot de passe et entrera directement dans '+E(company.name)+'. Le nombre de comptes actifs est limité par votre abonnement.</div>';
+  if(!isNlcCo()){var pb=document.createElement('div');pb.className='mutednote';pb.style.marginTop='10px';pb.innerHTML='<button type="button" class="btn" id="bcPurge">Retirer les données NLC importées par erreur</button> <small>Garde les clients réellement utilisés par votre société.</small>';box.appendChild(pb);pb.querySelector('#bcPurge').onclick=purgeForeign}
   page.querySelectorAll('.panel').forEach(function(x){if(x.id!=='bcMembers')x.style.display='none'});
   var wb=page.querySelector('.welcome .btn');if(wb)wb.style.display='none';
   box.querySelector('#bcInv').onsubmit=async function(e){e.preventDefault();var b=box.querySelector('#bcInv .btn');b.disabled=true;
