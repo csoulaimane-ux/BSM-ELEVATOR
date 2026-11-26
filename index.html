@@ -3928,7 +3928,7 @@ async function cycle(force){
     });
     var kvJobs=[];
     KV.forEach(function(k){var v=raw(k);if(v!=null&&v!==kvSnap[k])kvJobs.push([k,v])});
-    try{var tv=JSON.stringify(taxSettings);if(tv!==kvSnap[TAX])kvJobs.push([TAX,tv])}catch(e){}
+    try{var tv=JSON.stringify(taxSettings);if(taxSettings&&company&&taxSettings.ownerCo===String(company.id)&&tv!==kvSnap[TAX])kvJobs.push([TAX,tv])}catch(e){}
     pending=jobs.length+kvJobs.length;status();
     for(var i=0;i<jobs.length;i++){var j=jobs[i];
       if(j[2]){await sb.rpc('sync_record',{p_collection:j[0],p_id:j[1]._id,p_data:{},p_qty_delta:null,p_deleted:true,p_client:CLIENT}).then(function(r){if(r.error)throw r.error});delete snap[j[0]+'|'+j[1]._id]}
@@ -8803,6 +8803,78 @@ document.addEventListener('click',function(e){
 },true);
 })();
 </script>
+<script id="tb-attestation-par-societe">
+/* Tadbir — l'attestation fiscale (et son QR) ne s'affiche que pour la société à qui elle appartient.
+   Preuve d'appartenance : enregistrée par cette société, ou même identifiant fiscal (IF) qu'elle.
+   Aucune donnée enregistrée n'est effacée : seul l'affichage est filtré. */
+(function(){
+'use strict';
+var coId=null;
+var prevApply=window.tbApplyCo;
+window.tbApplyCo=function(co){if(co&&co.id)coId=String(co.id);return prevApply&&prevApply.apply(this,arguments)};
+
+function digits(v){return String(v==null?'':v).replace(/\D/g,'')}
+function own(s){
+  if(!s||!(s.issueDate||s.verificationCode||s.qrUrl))return false;
+  var m=/[?&]ifu=(\d+)/i.exec(s.qrUrl||''),ifu=digits(s.ifu)||(m?m[1]:''),mine='';
+  try{mine=digits(companyInfo['if'])}catch(e){}
+  if(window.tbIsNLC===false&&ifu==='31862062')return false;
+  if(s.ownerCo&&coId)return s.ownerCo===coId;
+  if(!coId&&window.tbIsNLC===undefined)return true;            /* société pas encore connue */
+  return !!(ifu&&mine&&ifu===mine);
+}
+function effective(x){
+  if(x&&own(x.taxSnapshot))return x.taxSnapshot;
+  if(!own(taxSettings))return null;
+  /* facture sans copie valable : attestation actuelle de la société (si la date correspond quand la copie était étrangère) */
+  if(x&&x.taxSnapshot&&!(x.date>=taxSettings.issueDate&&x.date<=taxSettings.expiryDate))return null;
+  return taxSettings;
+}
+window.tbEffectiveTax=effective;
+
+var prevView=window.viewInvoice;
+window.viewInvoice=function(i){
+  var x=invoices[i];if(!x)return prevView.apply(this,arguments);
+  var eff=effective(x),had=Object.prototype.hasOwnProperty.call(x,'taxSnapshot'),old=x.taxSnapshot,r;
+  x.taxSnapshot=eff||{};
+  try{r=prevView.apply(this,arguments)}finally{if(had)x.taxSnapshot=old;else delete x.taxSnapshot}
+  var box=document.querySelector('#invoice-paper .tax-info');
+  if(box){
+    if(!eff){box.innerHTML='';box.style.setProperty('visibility','hidden','important')}
+    else{
+      if(!/^data:image\/|^https?:/i.test(eff.qrImage||'')||String(eff.qrImage).length<200&&/^data:/i.test(eff.qrImage)){var q=box.querySelector('img');if(q)q.remove()}
+      if(!eff.qrUrl){var a=box.querySelector('a');if(a)a.remove()}
+    }
+  }
+  return r;
+};
+
+function blank(){return {issueDate:'',expiryDate:'',qrUrl:'',verificationCode:'',ifu:'',qrImage:''}}
+/* Fenêtre « Attestation fiscale » : ne jamais proposer les données d'une autre société */
+var prevOpen=window.openTaxSettings;
+window.openTaxSettings=function(){
+  var r=prevOpen.apply(this,arguments);
+  if(!own(taxSettings))['tax-issue','tax-expiry','tax-code','tax-ifu','tax-url'].forEach(function(id){var e=document.getElementById(id);if(e)e.value=''});
+  var f=document.getElementById('tax-qr-file');if(f)f.value='';
+  return r;
+};
+var prevSave=window.saveTaxSettings;
+window.saveTaxSettings=function(){
+  if(!(document.getElementById('tax-issue')||{}).value)return prevSave.apply(this,arguments);
+  var keep=own(taxSettings)?taxSettings:blank();
+  var before=taxSettings,tmp=Object.assign({},keep),file=(document.getElementById('tax-qr-file')||{}).files;
+  if(coId)tmp.ownerCo=coId;
+  taxSettings=tmp;
+  var r=prevSave.apply(this,arguments);
+  if(taxSettings===tmp&&!(file&&file[0]))taxSettings=before;   /* enregistrement refusé */
+  return r;
+};
+
+/* Générateur de secours : même filtre */
+var prevDeliver=window.tbDeliverInvoice;
+if(prevDeliver)window.tbDeliverInvoice=function(x,mode){return prevDeliver(Object.assign({},x,{taxSnapshot:effective(x)||{}}),mode)};
+})();
+</script>
 <script id="tb-pdf-apercu">
 /* Tadbir — « Télécharger PDF » = copie exacte de l'aperçu (facture et bon de livraison).
    Le document affiché est dessiné par le navigateur lui-même puis placé dans le PDF.
@@ -8968,7 +9040,13 @@ function ready(paper){
   return Promise.all(imgs.map(function(i){return i.complete?0:Promise.race([new Promise(function(r){i.addEventListener('load',r);i.addEventListener('error',r)}),wait(4000)])}))
     .then(function(){return document.fonts&&document.fonts.ready?Promise.race([document.fonts.ready,wait(3000)]):0});
 }
+function permitted(m){
+  var ok=false;try{ok=!!(window.NLCAuth&&window.NLCAuth.allowed(m))}catch(e){}
+  if(!ok)say('Accès refusé : votre compte ne dispose pas de cette autorisation.');
+  return ok;
+}
 function run(d,mode){
+  if(mode!=='print'&&!permitted(d.bl?'bl':'invoice'))return;
   if(busy)return;busy=true;say('Préparation du PDF…');
   ready(d.paper).then(function(){return capture(d.paper)}).then(function(p){busy=false;deliver(makePdf(p),d.name,mode)}).catch(function(e){
     busy=false;console.error(e);
@@ -8990,19 +9068,23 @@ var prevPrint=window.print;
 window.print=function(){if(window.TB_IOS){var d=viewed();if(d){run(d,'print');return}}return prevPrint.apply(this,arguments)};
 (function rebind(n){var b=$('v21Pf');if(b)b.onclick=window.v21PrintableFile;else if(n<20)setTimeout(function(){rebind(n+1)},500)})(0);
 
+/* boutons d'impression du registre BL : ancien modèle (et ses images) remplacé par l'aperçu */
+function printBL(i){try{viewBL(i)}catch(e){return}var d=viewed();if(d)run(d,'print')}
+window.v77PrintBL=printBL;window.v79OpenBL=printBL;
 /* « PDF de la sélection » (plusieurs BL) : mêmes pages que l'aperçu */
 document.addEventListener('click',function(e){
-  var b=e.target.closest&&e.target.closest('#v79f');if(!b)return;
+  var b=e.target.closest&&e.target.closest('#v79f,#v79p');if(!b)return;
   var ids=[].map.call(document.querySelectorAll('#bl-register .v79c:checked'),function(c){return Number(c.dataset.i)}).filter(function(i){return i>=0&&bls[i]});
   if(!ids.length)return;
   e.preventDefault();e.stopImmediatePropagation();
+  if(b.id!=='v79p'&&!permitted('bl'))return;
   if(busy)return;busy=true;say('Préparation du PDF…');
   var all=[],chain=Promise.resolve();
   ids.sort(function(a,c){return String(bls[a].no).localeCompare(String(bls[c].no),undefined,{numeric:true})}).forEach(function(i){
     chain=chain.then(function(){viewBL(i);var d=viewed();if(!d)throw new Error('BL introuvable');
       return ready(d.paper).then(function(){return capture(d.paper)}).then(function(p){all=all.concat(p)})});
   });
-  chain.then(function(){busy=false;closeViewInvoice();deliver(makePdf(all),ids.length===1?'BL_'+String(bls[ids[0]].no).replace(/[^\w-]+/g,'_')+'.pdf':'BL_selection_'+ids.length+'.pdf','save')})
+  chain.then(function(){busy=false;closeViewInvoice();deliver(makePdf(all),ids.length===1?'BL_'+String(bls[ids[0]].no).replace(/[^\w-]+/g,'_')+'.pdf':'BL_selection_'+ids.length+'.pdf',b.id==='v79p'?'print':'save')})
     .catch(function(x){busy=false;console.error(x);closeViewInvoice();say('Erreur lors de la création du PDF.')});
 },true);
 })();
