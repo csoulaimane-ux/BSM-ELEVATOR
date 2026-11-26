@@ -112,6 +112,7 @@ P.isNlc=isNlc;
 var STUB='\u0002IDB',BIG=20000;
 function isStub(v){return typeof v==='string'&&v.indexOf(STUB)===0}
 function stubVal(){return STUB+'|'+Date.now().toString(36)}
+P.TEN='nlc_cloud_tenant';P.myTenant=null;try{P.myTenant=_get.call(LS,P.TEN)}catch(e){}
 P.isStub=isStub;P.kvc={};P.bigOn=false;P.BIG=BIG;P.lost=[];
 P.lsRawBytes=function(){var n=0;try{for(var i=0;i<LS.length;i++){var k=LS.key(i);n+=(k.length+(_get.call(LS,k)||'').length)*2}}catch(e){}return n};
 P.idbBytes=function(){var n=0,c=0;Object.keys(P.kvc).forEach(function(k){c++;n+=(P.kvc[k]||'').length*2});return {count:c,bytes:n}};
@@ -217,6 +218,8 @@ P.flush=flush;
 proto.setItem=function(k,v){
   if(this!==LS||!isNlc(k))return _set.call(this,k,v);
   if(P.freeze)return;
+  if(k===P.TEN)P.myTenant=String(v);
+  else if(P.myTenant&&_get.call(LS,P.TEN)!==P.myTenant){lockTab();return} /* la société a changé dans un autre onglet : écriture refusée */
   var s=String(v);
   if(!P.noOffload&&P.idbState!=='bad'&&k!=='nlc_company_v65')s=offload(s);
   if(P.bigOn&&s.length>=BIG){P.kvc[k]=s;if(!isStub(_get.call(LS,k)))_set.call(LS,k,stubVal());mirror(k,s,1);return}
@@ -228,13 +231,26 @@ proto.getItem=function(k){var v=_get.call(this,k);
   if(this===LS&&v&&typeof v==='string'&&v.indexOf('"idb:h')>=0&&isNlc(k))return hyd(v);return v};
 proto.removeItem=function(k){
   if(this===LS&&isNlc(k)&&P.freeze)return;
+  if(this===LS&&isNlc(k)&&k!==P.TEN&&P.myTenant&&_get.call(LS,P.TEN)!==P.myTenant){lockTab();return}
   var r=_rem.call(this,k);
   if(this===LS&&isNlc(k))delete P.kvc[k];
+  if(this===LS&&k===P.TEN)P.myTenant=null;
   if(this===LS&&isNlc(k)&&MAIN.indexOf(k)<0)mirror(k,null);
   return r};
 window.addEventListener('pagehide',function(){try{flush()}catch(e){}});
 /* un autre onglet a modifié un gros bloc : recharger sa valeur depuis IndexedDB */
+/* V80.92.4 — une AUTRE société a été ouverte dans un autre onglet de ce navigateur (stockage partagé) :
+   cet onglet est bloqué (plus aucune écriture) pour que ses données ne se mélangent jamais avec celles de l'autre société */
+function lockTab(){if(P.tabLocked)return;P.tabLocked=true;P.freeze=true;
+  function show(){if(document.getElementById('tbTabLock'))return;var d=document.createElement('div');d.id='tbTabLock';
+    d.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(14,30,45,.88);display:flex;align-items:center;justify-content:center;padding:20px;font-family:Inter,-apple-system,Segoe UI,Arial,sans-serif';
+    d.innerHTML='<div style="background:#fff;border-radius:14px;max-width:440px;padding:24px 22px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.35)"><div style="font-size:30px">🔒</div><h3 style="margin:8px 0 10px;color:#0e3a4a;font-size:17px">Une autre société a été ouverte</h3><p style="margin:0 0 8px;color:#475467;font-size:13.5px;line-height:1.5">Une autre société est maintenant connectée dans un autre onglet de ce navigateur. Cet onglet est bloqué pour que les données des deux sociétés ne se mélangent pas.</p><p dir="rtl" style="margin:0 0 16px;color:#475467;font-size:13.5px;line-height:1.6">تم فتح شركة أخرى في علامة تبويب أخرى. تم إيقاف هذه الصفحة حتى لا تختلط بيانات الشركتين.</p><button type="button" style="border:0;border-radius:10px;padding:11px 18px;background:#0e7490;color:#fff;font-weight:700;font-size:14px;cursor:pointer">Recharger / إعادة التحميل</button></div>';
+    d.querySelector('button').onclick=function(){location.reload()};(document.body||document.documentElement).appendChild(d)}
+  if(document.body)show();else document.addEventListener('DOMContentLoaded',show)}
+P.lockTab=lockTab;
 window.addEventListener('storage',function(e){try{var k=e.key;if(e.storageArea!==LS||!k||!isNlc(k))return;
+  if(k===P.TEN){if(P.myTenant&&e.newValue!==P.myTenant)lockTab();return}
+  if(P.tabLocked)return;
   if(isStub(e.newValue))P.get('kv',k).then(function(v){if(typeof v==='string')P.kvc[k]=v}).catch(function(){});else delete P.kvc[k]}catch(x){}});
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'){try{flush()}catch(e){}}});
 
