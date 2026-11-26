@@ -101,12 +101,47 @@ if(window.__nlcV61)return;
 var P=window.__nlcV61={cache:{},inIdb:{},idbState:'pending',freeze:false,noOffload:false,wiped:false,restored:false,lastMirror:0,mirrorErr:''};
 var LS;try{LS=window.localStorage}catch(e){return}
 var proto=Storage.prototype,_set=proto.setItem,_get=proto.getItem,_rem=proto.removeItem;
-P.rawSet=function(k,v){return _set.call(LS,k,v)};
+P.rawSet=function(k,v){return _set.call(LS,k,lzPack(v))};
 P.rawGet=function(k){return _get.call(LS,k)};
 P.rawRem=function(k){return _rem.call(LS,k)};
 var MAIN=['nlc_ascenseurs_demo_v4','nlc_ascenseurs_v13_modules'];
 function isNlc(k){return typeof k==='string'&&k.indexOf('nlc_')===0}
 P.isNlc=isNlc;
+/* V80.89 — compression LZW transparente (UTF-8 -> codes 16 bits < 0xD800, blocs de 50000 octets) */
+var LZM='\u0001Z',LZB=50000,LZE=typeof TextEncoder!=='undefined'?new TextEncoder():null,LZD=typeof TextDecoder!=='undefined'?new TextDecoder():null;
+var LZON=false;try{LZON=window.localStorage.getItem('tb_lz_on')==='1'}catch(e){} /* compression désactivée par défaut (activable : localStorage.tb_lz_on='1') ; la lecture des données déjà compressées reste active */
+function lzPack(s){
+  if(!LZON||!LZE||typeof s!=='string'||s.length<8000||s.charCodeAt(0)===1)return s;
+  try{var b=LZE.encode(s),out=[LZM],i,n=b.length;
+    for(i=0;i<n;i+=LZB){var e=Math.min(n,i+LZB),d=new Map(),nx=256,w=-1,codes=[];
+      for(var j=i;j<e;j++){var c=b[j];if(w<0){w=c;continue}var k=w*256+c,v=d.get(k);
+        if(v!==undefined)w=v;else{codes.push(w);d.set(k,nx++);w=c}}
+      if(w>=0)codes.push(w);
+      out.push(String.fromCharCode(codes.length));
+      for(var q=0;q<codes.length;q+=8000)out.push(String.fromCharCode.apply(null,codes.slice(q,q+8000)))}
+    var r=out.join('');return r.length<s.length*0.85?r:s}catch(e){return s}}
+function lzUnpack(s){
+  if(typeof s!=='string'||s.indexOf(LZM)!==0||!LZD)return s;
+  try{var p=2,chunks=[],total=0;
+    while(p<s.length){var cnt=s.charCodeAt(p++),pre=new Int32Array(cnt+257),suf=new Uint8Array(cnt+257),len=new Int32Array(cnt+257).fill(1,0,256),nx=256,prev=-1,buf=new Uint8Array(LZB),pos=0,first=0;
+      for(var t=0;t<cnt;t++){var code=s.charCodeAt(p++),L;
+        if(code<256){L=1}else if(code<nx){L=len[code]}else{L=len[prev]+1}
+        var start=pos;
+        if(code<256){buf[pos++]=code;first=code}
+        else{var x=(code<nx)?code:prev,l=len[x],o=pos+l-1,y=x;
+          while(y>=256){buf[o--]=suf[y];y=pre[y]}buf[o]=y;first=y;pos+=l;
+          if(code>=nx){buf[pos++]=first}}
+        if(prev>=0){pre[nx]=prev;suf[nx]=first;len[nx]=len[prev]+1;nx++}
+        prev=code}
+      chunks.push(buf.subarray(0,pos));total+=pos}
+    var all=new Uint8Array(total),off=0;chunks.forEach(function(c){all.set(c,off);off+=c.length});
+    return LZD.decode(all)}catch(e){return s}}
+
+P.lzPack=lzPack;P.lzUnpack=lzUnpack;
+/* V80.90 — mesure de l'espace réellement libre dans localStorage (en caractères), sans toucher aux données */
+P.probeRoom=function(){var K='tb_probe_q',lo=0,hi=12000000,pad='a';try{LS.removeItem(K)}catch(e){}
+  try{while(hi-lo>25000){var mid=(lo+hi)>>1,ok=true;try{LS.setItem(K,new Array(mid+1).join(pad))}catch(e){ok=false}if(ok)lo=mid;else hi=mid}}finally{try{LS.removeItem(K)}catch(e){}}return lo};
+P.usedChars=function(){var n=0;for(var i=0;i<LS.length;i++){var k=LS.key(i);n+=k.length+(_get.call(LS,k)||'').length}return n};
 try{P.wiped=!_get.call(LS,MAIN[0])&&!_get.call(LS,MAIN[1])}catch(e){}
 
 function h53(s){var a=0xdeadbeef,b=0x41c6ce57;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);a=Math.imul(a^c,2654435761);b=Math.imul(b^c,1597334677)}
@@ -168,9 +203,10 @@ proto.setItem=function(k,v){
   if(P.freeze)return;
   var s=String(v);
   if(!P.noOffload&&P.idbState!=='bad'&&k!=='nlc_company_v65')s=offload(s);
-  _set.call(this,k,s);
+  _set.call(this,k,lzPack(s));
   mirror(k,s)};
 proto.getItem=function(k){var v=_get.call(this,k);
+  if(this===LS&&typeof v==='string'&&v.charCodeAt(0)===1&&isNlc(k))v=lzUnpack(v);
   if(this===LS&&v&&typeof v==='string'&&v.indexOf('"idb:h')>=0&&isNlc(k))return hyd(v);return v};
 proto.removeItem=function(k){
   if(this===LS&&isNlc(k)&&P.freeze)return;
@@ -181,7 +217,7 @@ window.addEventListener('pagehide',function(){try{flush()}catch(e){}});
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'){try{flush()}catch(e){}}});
 
 /* ---------- décision de restauration + préchargement des images ---------- */
-function allRaw(){var o={};for(var i=0;i<LS.length;i++){var k=LS.key(i);if(isNlc(k))o[k]=_get.call(LS,k)}return o}
+function allRaw(){var o={};for(var i=0;i<LS.length;i++){var k=LS.key(i);if(isNlc(k))o[k]=lzUnpack(_get.call(LS,k))}return o}
 P.allRaw=allRaw;
 P.boot=db().then(function(){return P.all('kv').then(function(vals){return P.keys('kv').then(function(ks){return {vals:vals,ks:ks}})})})
 .then(function(kv){
@@ -189,12 +225,12 @@ P.boot=db().then(function(){return P.all('kv').then(function(vals){return P.keys
   var already=false;try{already=!!sessionStorage.getItem('nlc_v61_rst')}catch(e){}
   if(P.wiped&&!already&&(map[MAIN[0]]||map[MAIN[1]])){
     P.freeze=true;P.restored=true;
-    var okc=0;Object.keys(map).forEach(function(k){try{_set.call(LS,k,map[k]);okc++}catch(e){}});
+    var okc=0;Object.keys(map).forEach(function(k){try{_set.call(LS,k,lzPack(map[k]));okc++}catch(e){}});
     try{sessionStorage.setItem('nlc_v61_rst',String(Date.now())+'|'+okc)}catch(e){}
     location.reload();return new Promise(function(){});
   }
   /* pas de restauration : synchroniser le miroir avec l'état actuel */
-  P.ready=true;var cur=allRaw();Object.keys(cur).forEach(function(k){mq[k]=cur[k]});
+  P.ready=true;var cur=allRaw();Object.keys(cur).forEach(function(k){mq[k]=cur[k];try{var rw=_get.call(LS,k);if(rw&&rw.length>=8000&&rw.charCodeAt(0)!==1){var pk=lzPack(rw);if(pk!==rw)_set.call(LS,k,pk)}}catch(e){}}); /* V80.89 : compacte les anciennes données */
   P.kvKeys=kv.ks;
   return flush();
 })
@@ -320,7 +356,7 @@ function refreshInvoiceBLChoices(){let el=document.getElementById('invoice-bl');
 
 restore();fillSelect();refreshInvoiceProductChoices();invdate.value=new Date().toISOString().slice(0,10);updateStats();renderClients();renderStock();calc();
 </script>
-<script id="v65-ovr">window.NLC_APP='Tadbir';window.NLC_APP_LEGACY=['NLC ASCENSEURS'];window.tbSameApp=function(a){return a===window.NLC_APP||(window.NLC_APP_LEGACY||[]).indexOf(a)>=0};window.NLC_HIDE=[];(function(){try{var c=JSON.parse(localStorage.getItem('nlc_company_v65')||'null');if(!c)return;if(c.info)Object.assign(companyInfo,c.info);if(c.logo)COMPANY_LOGO_IMAGE=c.logo;if(c.stamp)NLC_STAMP_IMAGE=c.stamp;if(c.sig)SIGNATURE_IMAGE=c.sig;if(c.qr)BANK_QR_IMAGE=c.qr}catch(e){}})();</script>
+<script id="v65-ovr">/* V80.91 — nom de fichier = société connectée (jamais « NLC » en dur) */window.tbFileBase=function(sep){var n='';try{n=(window.BSMCloud&&window.BSMCloud.company&&window.BSMCloud.company.name)||(typeof companyInfo!=='undefined'&&companyInfo.name)||''}catch(e){}var b=String(n).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9]+/g,'_').replace(/^_+|_+$/g,'')||'Tadbir';return sep==='-'?b.replace(/_/g,'-'):b};window.NLC_APP='Tadbir';window.NLC_APP_LEGACY=['NLC ASCENSEURS'];window.tbSameApp=function(a){return a===window.NLC_APP||(window.NLC_APP_LEGACY||[]).indexOf(a)>=0};window.NLC_HIDE=[];(function(){try{var c=JSON.parse(localStorage.getItem('nlc_company_v65')||'null');if(!c)return;if(c.info)Object.assign(companyInfo,c.info);if(c.logo)COMPANY_LOGO_IMAGE=c.logo;if(c.stamp)NLC_STAMP_IMAGE=c.stamp;if(c.sig)SIGNATURE_IMAGE=c.sig;if(c.qr)BANK_QR_IMAGE=c.qr}catch(e){}})();</script>
 
 <div id="taxSettingsModal" class="modal" style="display:none;position:fixed;inset:0;background:#0e3a4a88;z-index:1000;padding:20px;overflow:auto"><div style="max-width:560px;background:white;border-radius:16px;padding:24px;margin:5vh auto;box-shadow:0 20px 60px #0e3a4a44"><div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0;color:#0e3a4a">Attestation fiscale</h2><button class="btn secondary" onclick="closeTaxSettings()">Fermer</button></div><p style="font-size:12px;color:#718096">La date d’expiration est calculée automatiquement à six mois de la date d’émission. Les factures déjà émises conservent leur propre copie des données.</p><label>Date d’émission</label><input id="tax-issue" type="date" style="display:block;width:100%;padding:11px;border:1px solid #dce4ed;border-radius:8px;margin:6px 0 14px"><label>Date d’expiration</label><input id="tax-expiry" type="date" readonly style="display:block;width:100%;padding:11px;border:1px solid #dce4ed;border-radius:8px;margin:6px 0 14px;background:#f1f6f8"><label>Code de vérification</label><input id="tax-code" style="display:block;width:100%;padding:11px;border:1px solid #dce4ed;border-radius:8px;margin:6px 0 14px"><label>IFU</label><input id="tax-ifu" style="display:block;width:100%;padding:11px;border:1px solid #dce4ed;border-radius:8px;margin:6px 0 14px"><label>Image du nouveau QR code (à chaque renouvellement)</label><input id="tax-qr-file" type="file" accept="image/png,image/jpeg" style="display:block;width:100%;padding:8px;border:1px solid #dce4ed;border-radius:8px;margin:6px 0 14px"><label>URL de vérification DGI</label><input id="tax-url" style="display:block;width:100%;padding:11px;border:1px solid #dce4ed;border-radius:8px;margin:6px 0 18px"><button class="btn" onclick="saveTaxSettings()">Enregistrer l’attestation</button></div></div>
 <script>
@@ -409,7 +445,7 @@ function printClientReport(){
  w.document.write('<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Rapport client Tadbir</title><style>body{font:12px Arial;color:#172033;padding:18mm}h2{color:#174e82;margin-bottom:4px}h3{margin:18px 0 8px}.report-table{width:100%;border-collapse:collapse;margin:10px 0 18px}.report-table th,.report-table td{border:1px solid #cbd3dc;padding:7px;text-align:left;vertical-align:top}.report-table th{background:#edf2f7}.statement-client{margin:20px 0;page-break-inside:avoid}.statement-kpis{display:flex;gap:16px;flex-wrap:wrap;background:#f3f6f9;padding:10px}@page{size:A4;margin:14mm}@supports(height:100dvh){.app{min-height:100dvh}.sidebar{max-height:100dvh}}.toast{bottom:max(22px,env(safe-area-inset-bottom))}.content{padding-left:max(32px,env(safe-area-inset-left));padding-right:max(32px,env(safe-area-inset-right))}@media(max-width:560px){.content{padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right))}}input,select,textarea{font-size:max(16px,1em)}</style></head><body>'+el.innerHTML+'</body></html>');
  w.document.close();w.focus();setTimeout(function(){w.print()},300);
 }
-function exportClientReportCSV(){renderClientReport();const type=document.getElementById('client-report-type').value,client=document.getElementById('client-report-client').value,from=document.getElementById('client-report-from').value,to=document.getElementById('client-report-to').value;let rows=[];const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';if(type==='bl'){rows=[['Date','N° BL','Client','Projet','Désignations','Facture liée'],...bls.filter(b=>(!client||b.client===client)&&reportDateOK(b.date,from,to)&&b.status!=='Annulé').map(b=>[b.date,b.no,b.client,b.project,(b.items||[]).map(i=>(i.name||i.ref)+' x '+i.qty).join(' | '),b.invoiceNo||''])]}else{let a=invoices.filter(x=>(!client||x.client===client)&&reportDateOK(x.date,from,to));rows=type==='unpaid'?[['Date','Facture','Client','TTC','Payé','Reste'],...a.filter(x=>(+x.ttc||0)>(+x.paid||0)+.005).map(x=>[x.date,x.no,x.client,x.ttc,x.paid,invDue(x)])]:[['Date','Facture','Client','TTC','Payé','Reste'],...a.map(x=>[x.date,x.no,x.client,x.ttc,x.paid,Math.max(0,x.ttc-x.paid)])]}let csv='\ufeff'+rows.map(r=>r.map(q).join(';')).join('\r\n');let blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='NLC_Rapport_'+type+'.csv';a.click();URL.revokeObjectURL(url)}
+function exportClientReportCSV(){renderClientReport();const type=document.getElementById('client-report-type').value,client=document.getElementById('client-report-client').value,from=document.getElementById('client-report-from').value,to=document.getElementById('client-report-to').value;let rows=[];const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';if(type==='bl'){rows=[['Date','N° BL','Client','Projet','Désignations','Facture liée'],...bls.filter(b=>(!client||b.client===client)&&reportDateOK(b.date,from,to)&&b.status!=='Annulé').map(b=>[b.date,b.no,b.client,b.project,(b.items||[]).map(i=>(i.name||i.ref)+' x '+i.qty).join(' | '),b.invoiceNo||''])]}else{let a=invoices.filter(x=>(!client||x.client===client)&&reportDateOK(x.date,from,to));rows=type==='unpaid'?[['Date','Facture','Client','TTC','Payé','Reste'],...a.filter(x=>(+x.ttc||0)>(+x.paid||0)+.005).map(x=>[x.date,x.no,x.client,x.ttc,x.paid,invDue(x)])]:[['Date','Facture','Client','TTC','Payé','Reste'],...a.map(x=>[x.date,x.no,x.client,x.ttc,x.paid,Math.max(0,x.ttc-x.paid)])]}let csv='\ufeff'+rows.map(r=>r.map(q).join(';')).join('\r\n');let blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=tbFileBase()+'_Rapport_'+type+'.csv';a.click();URL.revokeObjectURL(url)}
 
 function renderUsers(){document.getElementById('app-user-rows').innerHTML=appUsers.map(x=>`<tr><td>${escapeHTML(x.username)}</td><td>${escapeHTML(x.name)}</td><td>${escapeHTML(x.role)}</td></tr>`).join('')}
 async function sha256(text){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
@@ -1071,7 +1107,7 @@ window.v21ExportAllExcel=function(){
  var offres=[];try{offres=JSON.parse(localStorage.getItem('nlc_offres_v19')||'[]')}catch(e){}
  var sheets=[arrSheet('Clients',clients),arrSheet('Factures',invoices),childSheet('Lignes factures',invoices,'items','no','N° facture'),arrSheet('Stock',products),arrSheet('Mouvements stock',movements),arrSheet('Bons de livraison',bls),childSheet('Lignes BL',bls,'items','no','N° BL'),arrSheet('Achats',purchases),childSheet('Paiements achats',purchases,'payments','no','N° achat'),arrSheet('Fournisseurs',suppliers),arrSheet('Employés',employees),arrSheet('Caisse',cashMoves),arrSheet('Calendrier',calendarEvents),arrSheet('Offres',offres),arrSheet('Utilisateurs',appUsers)];
  var tot=sheets.reduce(function(a,s){return a+s.rows.length},0);
- return deliver(buildXlsx(sheets),'NLC_ASCENSEURS_Export_'+stamp()+'.xlsx').then(function(){return tot})};
+ return deliver(buildXlsx(sheets),tbFileBase()+'_Export_'+stamp()+'.xlsx').then(function(){return tot})};
 window.v21ExportTableExcel=function(table,title){
  var ths=[].map.call(table.querySelectorAll('thead th'),function(x){return x.innerText.trim()});
  if(!ths.length){var r0=table.querySelector('tr');if(r0)ths=[].map.call(r0.children,function(x){return x.innerText.trim()})}
@@ -1218,7 +1254,7 @@ window.v21OpenAgent=function(){var o=document.getElementById('nlcAgent');if(o)o.
  function addAccounting(){const sec=$('rapports');if(!sec||$('vat-accounting-panel'))return;const panel=document.createElement('div');panel.className='panel';panel.id='vat-accounting-panel';panel.innerHTML=`<div class="panelhead"><h3>ÉTAT MENSUEL DES VENTES & TVA</h3><span class="tag">À partir du 01/01/2026</span></div><div class="formgrid"><div class="field"><label>ANNÉE</label><select id="vat-year"><option>2026</option><option>2027</option><option>2028</option></select></div></div><div class="actions"><button class="btn" id="vat-refresh">Actualiser</button><button class="btn secondary" id="vat-print">Imprimer / PDF</button><button class="btn secondary" id="vat-csv">Exporter Excel (CSV)</button></div><div id="vat-table-wrap"></div><p class="mutednote">Rapport calculé à partir des factures enregistrées. Il ne constitue pas à lui seul une déclaration fiscale officielle ni un bilan comptable certifié.</p>`;sec.appendChild(panel);
   const build=()=>{const y=+$('vat-year').value;let rows=[];for(let m=0;m<12;m++){let a=invoices.filter(x=>String(x.date||'').slice(0,7)===`${y}-${String(m+1).padStart(2,'0')}`);rows.push({month:new Date(y,m,1).toLocaleDateString('fr-FR',{month:'long'}),count:a.length,ht:a.reduce((s,x)=>s+(+x.ht||0),0),vat:a.reduce((s,x)=>s+(+x.vat||0),0),ttc:a.reduce((s,x)=>s+(+x.ttc||0),0)});}const sum=k=>rows.reduce((s,x)=>s+x[k],0);$('vat-table-wrap').innerHTML=`<table class="report-table"><thead><tr><th>Mois</th><th>Nb factures</th><th>Total HT</th><th>Total TVA</th><th>Total TTC</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.month}</td><td>${r.count}</td><td>${money2(r.ht)} DH</td><td>${money2(r.vat)} DH</td><td>${money2(r.ttc)} DH</td></tr>`).join('')}<tr><th>TOTAL ${y}</th><th>${sum('count')}</th><th>${money2(sum('ht'))} DH</th><th>${money2(sum('vat'))} DH</th><th>${money2(sum('ttc'))} DH</th></tr></tbody></table>`;return rows;};
   $('vat-refresh').onclick=build;$('vat-year').onchange=build;$('vat-print').onclick=()=>{build();const w=window.open('','_blank');if(!w){notify('Autorisez les fenêtres surgissantes.');return;}w.document.write('<html><head><meta charset="utf-8"><title>État mensuel ventes TVA</title><style>body{font:12px Arial;padding:15mm}table{width:100%;border-collapse:collapse}td,th{border:1px solid #888;padding:7px}th{background:#eee}@page{size:A4 landscape;margin:12mm}</style></head><body><h2>'+escapeHTML(companyInfo.name)+' — ÉTAT MENSUEL DES VENTES & TVA</h2>'+ $('vat-table-wrap').innerHTML+'</body></html>');w.document.close();w.print();};
-  $('vat-csv').onclick=()=>{const y=+$('vat-year').value;const rows=[['Mois','Nombre factures','Total HT','Total TVA','Total TTC']];for(let m=0;m<12;m++){let a=invoices.filter(x=>String(x.date||'').slice(0,7)===`${y}-${String(m+1).padStart(2,'0')}`);rows.push([new Date(y,m,1).toLocaleDateString('fr-FR',{month:'long'}),a.length,a.reduce((s,x)=>s+(+x.ht||0),0),a.reduce((s,x)=>s+(+x.vat||0),0),a.reduce((s,x)=>s+(+x.ttc||0),0)]);}const csv='\ufeff'+rows.map(r=>r.join(';')).join('\r\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download=`NLC_Ventes_TVA_${y}.csv`;a.click();};build();
+  $('vat-csv').onclick=()=>{const y=+$('vat-year').value;const rows=[['Mois','Nombre factures','Total HT','Total TVA','Total TTC']];for(let m=0;m<12;m++){let a=invoices.filter(x=>String(x.date||'').slice(0,7)===`${y}-${String(m+1).padStart(2,'0')}`);rows.push([new Date(y,m,1).toLocaleDateString('fr-FR',{month:'long'}),a.length,a.reduce((s,x)=>s+(+x.ht||0),0),a.reduce((s,x)=>s+(+x.vat||0),0),a.reduce((s,x)=>s+(+x.ttc||0),0)]);}const csv='\ufeff'+rows.map(r=>r.join(';')).join('\r\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download=`${tbFileBase()}_Ventes_TVA_${y}.csv`;a.click();};build();
  }
  const oldShow=window.showPage;window.showPage=function(p){oldShow(p);if(p==='rapports')addAccounting();if(p==='rh')renderEmployees();};
  // Extend backup exports with payroll history without changing existing backup format's prior fields.
@@ -1385,7 +1421,7 @@ window.v21OpenAgent=function(){var o=document.getElementById('nlcAgent');if(o)o.
     cols:[{label:'Client',w:150},{label:'Fact.',w:30,align:'r'},{label:'Total TTC',w:80,align:'r'},{label:'Réglé',w:80,align:'r'},{label:'Reste dû',w:85,align:'r'},{label:'Dont en retard',w:90,align:'r'}],
     rows:s.map(function(c){return {cells:[c.name,String(c.count),fm(c.ttc),fm(c.paid),fm(c.reste),fm(c.lateAmt)],bold:{4:true}}}).concat([{total:true,cells:['TOTAL','',fm(tt.ttc),fm(tt.paid),fm(tt.reste),fm(tt.late)]}]),
     note:(s.length?'':'Aucun client avec un solde à cette date. ')+'Attention : les montants réglés reflètent les paiements actuellement enregistrés. Les paiements historiques ne sont pas entièrement reconstitués à la date choisie.',sign:false};
-   file='NLC-Situation-clients-'+o.asOf+'-V32.pdf'}
+   file=tbFileBase('-')+'-Situation-clients-'+o.asOf+'-V32.pdf'}
   else{
    var c=clients.find(function(x){return x.name===name})||{name:name},all=rowsFor(name,o),rows=o.filter==='all'?all:all.filter(function(r){return r.reste>0.005}),dueTot=sum(all,'reste');
    doc={title:'SITUATION DE CRÉDIT',meta:[['Arrêtée au',dfr(o.asOf)],['Client',c.name.length>30?c.name.slice(0,30)+'…':c.name]],
@@ -1394,7 +1430,7 @@ window.v21OpenAgent=function(){var o=document.getElementById('nlcAgent');if(o)o.
     rows:rows.map(function(r){return {cells:[r.no,dfr(r.date),dfr(r.due),fm(r.ttc),fm(r.paid),fm(r.reste),r.reste<=0.005?'Soldée':(r.late?r.late+' j':'À échoir')],bold:{5:true}}}).concat([{total:true,cells:['TOTAL','','',fm(sum(rows,'ttc')),fm(sum(rows,'paid')),fm(sum(rows,'reste')),'']}]),
     totals:[{label:'SOLDE DÛ AU '+dfr(o.asOf),value:fm(dueTot)+' MAD',big:true}],
     note:(dueTot>0.005?'Arrêtée la présente situation à la somme de : '+dirhams(dueTot)+'.':'Aucun solde dû à la date indiquée.')+' Les montants réglés reflètent les paiements actuellement enregistrés et ne constituent pas une reconstitution complète des paiements à une date historique.',pay:dueTot>0.005?pay:'',sign:true};
-   file='NLC-Situation-credit-'+name.replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+o.asOf+'-V32.pdf'}
+   file=tbFileBase('-')+'-Situation-credit-'+name.replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'')+'-'+o.asOf+'-V32.pdf'}
   var blob;try{blob=new Blob([buildPdf(doc)],{type:'application/pdf'})}catch(e){console.error(e);notify('Erreur lors de la création du PDF.');return}
   sheet(blob,file,pvHtml(doc))};
  /* init */
@@ -2080,7 +2116,7 @@ var MAXPI=5;
 function imgCompress(file){return new Promise(function(res){var fr=new FileReader();fr.onerror=function(){res(null)};fr.onload=function(){var im=new Image();im.onerror=function(){res(null)};im.onload=function(){var S=1100,w=im.width,h=im.height,k=Math.min(1,S/Math.max(w,h));w=Math.round(w*k);h=Math.round(h*k);var c=document.createElement('canvas');c.width=w;c.height=h;var x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);res(c.toDataURL('image/jpeg',.68))};im.src=fr.result};fr.readAsDataURL(file)})}
 async function imgs(files){var out=[];files=[].slice.call(files||[]).slice(0,MAXPI);for(var i=0;i<files.length;i++){var d=await imgCompress(files[i]);if(d)out.push(d)}return out}
 function lsMB(){var t=0;try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);t+=(k.length+(localStorage.getItem(k)||'').length)*2}}catch(e){}return t/1048576}
-function storageWarn(){var u=lsMB();if(u>3.6)notify('Stockage presque plein ('+u.toFixed(1)+' Mo sur ~5 Mo) : exportez une sauvegarde et évitez d’ajouter trop de photos.')}
+function storageWarn(){var u=lsMB();if(u>3.6&&window.__nlcV61&&window.__nlcV61.probeRoom()<400000)notify('Stockage presque plein ('+u.toFixed(1)+' Mo sur ~5 Mo) : exportez une sauvegarde et évitez d’ajouter trop de photos.')}
 function picField(id){return '<div style="grid-column:1/-1"><label class="l" style="font-size:10px;font-weight:800;color:#667085;text-transform:uppercase;display:block;margin-bottom:2px">Photo / scan de la facture d’achat (facultatif, jusqu’à '+MAXPI+')</label><input id="'+id+'" type="file" accept="image/*" multiple></div>'}
 function viewerEnsure(){if(document.getElementById('v60-img'))return;var d=document.createElement('div');d.id='v60-img';d.style.cssText='position:fixed;inset:0;background:#102b4ecc;z-index:3300;display:none;overflow:auto;padding:14px';document.body.appendChild(d);d.addEventListener('click',function(e){if(e.target===d)d.style.display='none'})}
 var VW={no:null,sup:null,idx:0};
@@ -2339,7 +2375,7 @@ function snapToBackup(rec){return gunz(rec).then(function(txt){var k=JSON.parse(
 function dlText(name,text,type){var b=new Blob([text],{type:type||'application/json'}),a=document.createElement('a'),u=URL.createObjectURL(b);a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(u);a.remove()},1500)}
 function dlSnap(id){P.get('snap',id).then(function(rec){if(!rec)return;return snapToBackup(rec).then(function(d){
   var t=new Date(rec.ts),p=function(x){return String(x).padStart(2,'0')};
-  dlText('NLC_ASCENSEURS_Point_'+t.getFullYear()+p(t.getMonth()+1)+p(t.getDate())+'_'+p(t.getHours())+p(t.getMinutes())+'.json',JSON.stringify(d,null,2));notify('Point de restauration téléchargé.')})}).catch(function(){notify('Échec du téléchargement.')})}
+  dlText(tbFileBase()+'_Point_'+t.getFullYear()+p(t.getMonth()+1)+p(t.getDate())+'_'+p(t.getHours())+p(t.getMinutes())+'.json',JSON.stringify(d,null,2));notify('Point de restauration téléchargé.')})}).catch(function(){notify('Échec du téléchargement.')})}
 function delSnap(id){if(typeof nlcConfirm!=='function')return;nlcConfirm('Supprimer ce point de restauration ?','Supprimer').then(function(ok){if(ok)P.del('snap',id).then(render)})}
 
 /* nettoyage des images orphelines */
@@ -2376,6 +2412,11 @@ function render(){var st=$('v61-stats');if(!st)return;
    +'<div class="v61-card"><b>Copie interne (IndexedDB)</b><div class="v '+(idb?'v61-ok':'v61-bad')+'">'+(idb?'Active ✓':'Indisponible')+'</div><div class="s">'+(P.lastMirror?'Dernière copie : '+fmtDate(P.lastMirror):'En attente…')+(P.mirrorErr?'<br>'+E(P.mirrorErr):'')+'</div></div>'
    +'<div class="v61-card"><b>Dernière sauvegarde fichier</b><div class="v '+(days===null||days>7?'v61-bad':days>3?'v61-warn':'v61-ok')+'">'+(last?fmtDate(last):'Jamais')+'</div><div class="s">'+(days===null?'Téléchargez-en une dès maintenant.':days>7?'Plus de '+days+' jours : à refaire.':'Il y a '+days+' jour(s).')+'</div></div>'
    +'<div class="v61-card" id="v61-st-im"><b>Images (mémoire interne)</b><div class="v">…</div></div><div class="v61-card" id="v61-st-pe"><b>Protection navigateur</b><div class="v">…</div></div>';
+  try{setTimeout(function(){var room=P.probeRoom(),tot=(P.usedChars()+room)*2,us=lsBytes(),pc=Math.min(100,Math.round(us/tot*100)),cl=pc>85?'#d92d20':pc>65?'#b54708':'#1f9d55',c0=st.firstChild;
+    if(c0)c0.innerHTML='<b>Stockage du navigateur</b><div class="v">'+fmtSize(us)+' <span style="font-size:12px;color:#667085">/ ≈'+fmtSize(tot)+' (limite mesurée)</span></div><div class="v61-bar"><i style="width:'+pc+'%;background:'+cl+'"></i></div><div class="s">Espace libre réel : <b>'+fmtSize(room*2)+'</b>. Les images de plus de 5 Ko sont déplacées vers la mémoire interne.</div>'},60)}catch(e){}
+  try{var det=[];for(var di=0;di<localStorage.length;di++){var dk=localStorage.key(di),dr=P.rawGet(dk)||'';det.push([dk,dr.length*2,(P.isNlc(dk)?(localStorage.getItem(dk)||'').length*2:dr.length*2),dr.charCodeAt(0)===1])}
+    det.sort(function(a,b){return b[1]-a[1]});
+    st.insertAdjacentHTML('beforeend','<div class="v61-card" style="grid-column:1/-1"><b>Détail du stockage (10 plus grosses clés)</b><div class="s" style="font-family:monospace;line-height:1.7">'+det.slice(0,10).map(function(x){return E(x[0])+' — '+fmtSize(x[1])+(x[3]?' (compressé, réel '+fmtSize(x[2])+')':'')}).join('<br>')+'</div></div>')}catch(e){}
   try{var n=0,sz=0;P.db().then(function(db){var t=db.transaction('img','readonly'),c=t.objectStore('img').openCursor();c.onsuccess=function(){var cur=c.result;if(cur){n++;sz+=(cur.value||'').length;cur.continue()}};
     t.oncomplete=function(){var e=$('v61-st-im');if(e)e.innerHTML='<b>Images (mémoire interne)</b><div class="v">'+n+'</div><div class="s">'+fmtSize(sz)+'</div>'}})}catch(e){}
   try{navigator.storage.persisted().then(function(p){var e=$('v61-st-pe');if(e)e.innerHTML='<b>Protection navigateur</b><div class="v '+(p?'v61-ok':'v61-warn')+'">'+(p?'Activée ✓':'Non garantie')+'</div><div class="s">'+(p?'Le navigateur ne supprimera pas vos données automatiquement.':'Protection non activée par le navigateur.')+'</div>'})}catch(e){var e2=$('v61-st-pe');if(e2)e2.innerHTML='<b>Protection navigateur</b><div class="v">—</div>'}
@@ -2397,7 +2438,7 @@ function boot(){install();
   P.hydDone.then(function(){setTimeout(function(){autoCheck(false)},3000)});
   document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')autoCheck(false)});
   setInterval(function(){autoCheck(false)},30*60*1000);
-  setInterval(function(){try{if(lsBytes()>4.2*1024*1024&&!P.warnedQuota){P.warnedQuota=1;banner('Le stockage du navigateur est presque plein. Téléchargez une sauvegarde et contactez-moi.',true)}}catch(e){}},60000)}
+  setInterval(function(){try{if(P.probeRoom()<400000&&!P.warnedQuota){P.warnedQuota=1;banner('Le stockage du navigateur est presque plein. Téléchargez une sauvegarde et contactez-moi.',true)}}catch(e){}},300000)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
 
