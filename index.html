@@ -1731,11 +1731,15 @@ window.chqRelabel=function(){var w=chqW(),box=document.getElementById('chq-box')
 
 /* ========== 6. Corbeille (hors facture/BL/offre) ========== */
 var TK='nlc_trash_v58';
-function trashAll(){return ls(TK,[])}
+/* V85.5.2 — suppression définitive fiable : liste des éléments retirés de la corbeille, partagée par tous les appareils (synchronisée) */
+var TKDEL='nlc_trash_purged_v1';
+function trashGone(){var a=ls(TKDEL,[]);return Array.isArray(a)?a:[]}
+function trashForget(id){if(id==null)return;var a=trashGone();if(a.indexOf(String(id))<0){a.push(String(id));lsSet(TKDEL,a.slice(-5000))}}
+function trashAll(){var a=ls(TK,[]);if(!Array.isArray(a))return [];var g=trashGone();if(!g.length)return a;var o={};g.forEach(function(x){o[x]=1});var b=a.filter(function(t){return !(t&&o[String(t.id)])});if(b.length!==a.length)lsSet(TK,b);return b}
 function trashSave(a){return lsSet(TK,a.slice(0,2000))}
-function trashSync(){var cur=trashAll(),ids={};cur.forEach(function(t){ids[t.id]=1});var ch=false;
-  var inv=ls(V13_KEY+'_trash',[]);if(inv.length){inv.forEach(function(t){var x=t.invoice||t;if(!x||!x.no)return;var id='F|'+x.no+'|'+(t.deletedAt||'');if(ids[id])return;cur.unshift({id:id,type:'Facture',ref:x.no,label:(x.client||'')+' — '+money(x.ttc)+' DH TTC',deletedAt:t.deletedAt||new Date().toISOString(),deletedBy:t.deletedBy||'ADMIN',payload:x});ids[id]=1;ch=true});localStorage.removeItem(V13_KEY+'_trash')}
-  var bl=ls('nlc_bl_trash',[]);if(bl.length){bl.forEach(function(t){var b=t.bl||t;if(!b||!b.no)return;var id='B|'+b.no+'|'+(t.deletedAt||'');if(ids[id])return;cur.unshift({id:id,type:'BL',ref:b.no,label:(b.client||'')+' — '+((b.items||[]).length)+' ligne(s)',deletedAt:t.deletedAt||new Date().toISOString(),deletedBy:t.deletedBy||'Administrateur',payload:b});ids[id]=1;ch=true});localStorage.removeItem('nlc_bl_trash')}
+function trashSync(){var cur=trashAll(),ids={},gone={};trashGone().forEach(function(x){gone[x]=1});cur.forEach(function(t){ids[t.id]=1});var ch=false;
+  var inv=ls(V13_KEY+'_trash',[]);if(inv.length){inv.forEach(function(t){var x=t.invoice||t;if(!x||!x.no)return;var id='F|'+x.no+'|'+(t.deletedAt||'');if(ids[id]||gone[id])return;cur.unshift({id:id,type:'Facture',ref:x.no,label:(x.client||'')+' — '+money(x.ttc)+' DH TTC',deletedAt:t.deletedAt||new Date().toISOString(),deletedBy:t.deletedBy||'ADMIN',payload:x});ids[id]=1;ch=true});localStorage.setItem(V13_KEY+'_trash','[]')}
+  var bl=ls('nlc_bl_trash',[]);if(bl.length){bl.forEach(function(t){var b=t.bl||t;if(!b||!b.no)return;var id='B|'+b.no+'|'+(t.deletedAt||'');if(ids[id]||gone[id])return;cur.unshift({id:id,type:'BL',ref:b.no,label:(b.client||'')+' — '+((b.items||[]).length)+' ligne(s)',deletedAt:t.deletedAt||new Date().toISOString(),deletedBy:t.deletedBy||'Administrateur',payload:b});ids[id]=1;ch=true});localStorage.setItem('nlc_bl_trash','[]')}
   if(ch){cur.sort(function(a,b){return String(b.deletedAt).localeCompare(String(a.deletedAt))});trashSave(cur)}return cur}
 function trashAdd(type,ref,label,payload){var a=trashAll();a.unshift({id:type[0]+'|'+ref+'|'+Date.now()+Math.random().toString(36).slice(2,5),type:type,ref:ref,label:label,deletedAt:new Date().toISOString(),deletedBy:me(),payload:payload});trashSave(a)}
 /* offres : détecter les suppressions sans toucher au module */
@@ -1757,11 +1761,11 @@ async function trashRestore(id){var a=trashSync(),t=a.find(function(z){return z.
     var rs2={n:0,warn:0};if(b.stockDeducted&&b.status!=='Annulé')rs2=restoreStock(b.items,'Restauration BL '+b.no);bls.unshift(b);persist();msg='BL '+b.no+' restauré.'+(rs2.n?' Stock re-sorti : '+rs2.n+' ligne(s).':'')+(rs2.warn?' Attention : stock insuffisant sur '+rs2.warn+' ligne(s).':'')}
   else if(t.type==='Offre'){var l=ls('nlc_offres_v19',[]);if(l.some(function(o){return o.no===t.payload.no})){notify('Une offre n° '+t.payload.no+' existe déjà.');return}l.unshift(t.payload);lsSet('nlc_offres_v19',l);msg='Offre '+t.ref+' restaurée (ouvrez la page Offres pour la voir).'}
   else if(window.NLC_RESTORE&&window.NLC_RESTORE[t.type]){msg=await window.NLC_RESTORE[t.type](t);if(!msg)return}else{notify('Type non restaurable.');return}
-  trashSave(trashAll().filter(function(z){return z.id!==id}));audit('Restauration '+t.type+' (corbeille)',t.ref);persist();
+  trashForget(id);trashSave(trashAll().filter(function(z){return z.id!==id}));audit('Restauration '+t.type+' (corbeille)',t.ref);persist();
   ['renderRegister','updateStats','renderFinance','renderStock','renderBLRegister'].forEach(function(f){try{window[f]&&window[f]()}catch(e){}});trashRender();notify(msg)}
 async function trashPurge(id){var a=trashSync(),t=a.find(function(z){return z.id===id});if(!t)return;
   if(!(await adminOK('Supprimer définitivement '+t.type+' '+t.ref+'. Cette action est irréversible.')))return;
-  trashSave(trashAll().filter(function(z){return z.id!==id}));audit('Suppression définitive '+t.type+' (corbeille)',t.ref);persist();trashRender();notify('Supprimé définitivement.')}
+  trashForget(id);trashSave(trashAll().filter(function(z){return z.id!==id}));audit('Suppression définitive '+t.type+' (corbeille)',t.ref);persist();trashRender();notify('Supprimé définitivement.')}
 window.trashRestore=trashRestore;window.trashPurge=trashPurge;window.NLC_TRASH={add:trashAdd,adminOK:adminOK};
 function trashRender(){var el=document.getElementById('trash-rows');if(!el)return;var a=trashSync(),q=(document.getElementById('trash-q').value||'').toLowerCase(),ty=document.getElementById('trash-type').value;
   var list=a.filter(function(t){return (!ty||t.type===ty)&&(t.type+' '+t.ref+' '+t.label+' '+t.deletedBy).toLowerCase().indexOf(q)>=0});
@@ -1962,7 +1966,7 @@ var sp0=window.showPage;window.showPage=function(p){var r=sp0.apply(this,argumen
   if(p==='avoirs'){var cr2=document.getElementById('crumb');if(cr2)cr2.textContent='Avoirs';avRefresh();avRender()}
   if(p==='register')renderRegister()}catch(e){}return r};
 var ct=window.chqToggle;if(typeof ct==='function')window.chqToggle=function(){var r=ct.apply(this,arguments);try{chqRelabel()}catch(e){}return r};
-function boot(){try{trashSync()}catch(e){}trashInstall();regInstall();avInstall();try{renderRegister()}catch(e){}navBuild();navWatch();setTimeout(navBuild,400);setTimeout(navBuild,1500)}
+function boot(){try{trashSync()}catch(e){}setInterval(function(){try{var n=ls(TK,[]).length;trashSync();if(trashAll().length!==n&&document.getElementById('corbeille')&&document.getElementById('corbeille').classList.contains('active'))trashRender()}catch(e){}},4000);trashInstall();regInstall();avInstall();try{renderRegister()}catch(e){}navBuild();navWatch();setTimeout(navBuild,400);setTimeout(navBuild,1500)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
 
@@ -3623,7 +3627,7 @@ var ARR={ /* name: [getter, setter, order] ; order 'desc' = newest first */
   cashMoves:[function(){return cashMoves},function(v){cashMoves=v},'desc'],
   calendarEvents:[function(){return calendarEvents},function(v){calendarEvents=v},'asc']
 };
-var KV=['nlc_v67','nlc_avoirs_v39','nlc_offres_v19','nlc_v62_modules','nlc_v63','nlc_v26_payroll_records','nlc_trash_v58','nlc_stock_damaged_v1','nlc_company_v65','nlc_ascenseurs_v13_modules_trash','nlc_bl_trash','tb_bl_import_v1'];
+var KV=['nlc_v67','nlc_avoirs_v39','nlc_offres_v19','nlc_v62_modules','nlc_v63','nlc_v26_payroll_records','nlc_trash_v58','nlc_stock_damaged_v1','nlc_company_v65','nlc_ascenseurs_v13_modules_trash','nlc_bl_trash','tb_bl_import_v1','nlc_trash_purged_v1'];
 var TAX='__taxSettings';
 var SNAPKEY='nlc_cloud_snap',METAKEY='nlc_cloud_meta',TENANT='nlc_cloud_tenant'; /* V80.86 : cachet = société propriétaire des données locales */
 var CLIENT=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
