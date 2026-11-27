@@ -8521,6 +8521,7 @@ var pend=new Set(),tm=null;
 function flush(){tm=null;var m=map();if(!Object.keys(m).length){pend.clear();return}var L=Array.from(pend);pend.clear();L.forEach(function(r){try{scan(r,m)}catch(e){}})}
 function queue(r){pend.add(r);if(!tm)tm=setTimeout(flush,250)}
 try{new MutationObserver(function(ms){ms.forEach(function(x){x.addedNodes.forEach(function(n){if(n.nodeType===1){if(!n.classList||!n.classList.contains('tbCl'))queue(n)}else if(n.nodeType===3&&n.parentNode&&n.parentNode.nodeType===1&&!n.parentNode.classList.contains('tbCl'))queue(n.parentNode)})})}).observe(document.body,{childList:true,subtree:true})}catch(e){}
+window.tbClinkScan=function(r){try{scan(r,map())}catch(e){}}; /* V80.92.8 : liens immédiats (tableaux stables) */
 function full(){document.querySelectorAll('.page').forEach(queue)}
 if(document.readyState!=='loading')setTimeout(full,600);else document.addEventListener('DOMContentLoaded',function(){setTimeout(full,600)});
 setTimeout(full,2500);
@@ -9292,31 +9293,43 @@ html body .sidebar .nav button .navtext{flex:1 1 auto;min-width:0;line-height:1.
 }}
 </style>
 <script type="text/x-nlc-defer" id="tb-recent-stable">
-/* V80.92.7 — tableaux qui ne bougent plus tout seuls (tableau de bord « Factures récentes », registre des factures).
-   Avant : à chaque rafraîchissement (synchro cloud…), le tableau était redessiné « brut » puis remis en forme ~120 ms plus tard → tout sautait.
-   Maintenant : si le contenu n'a pas changé, les lignes déjà affichées sont conservées telles quelles (boutons, cases cochées compris) ;
-   sinon le tableau est mis en forme immédiatement, avant l'affichage. */
+/* V80.92.8 — TOUTES les listes (factures, BL, clients, stock, achats, caisse, avoirs…) ne bougent plus toutes seules.
+   Avant : à chaque rafraîchissement (synchro cloud…), une liste était redessinée « brute » puis remise en forme ~100 ms plus tard → tout sautait.
+   Maintenant, juste après qu'une liste est redessinée (et avant l'affichage) :
+   - contenu identique → les lignes déjà affichées sont conservées (boutons, menus, cases cochées) ;
+   - contenu changé   → la mise en forme (DH, pastilles, liens clients, menu ⋯, arabe) est appliquée tout de suite.
+   Les tableaux de saisie (champs texte, listes déroulantes) ne sont pas concernés. */
 (function(){
 'use strict';
-function clink(t){
-  var m={};try{clients.forEach(function(c){if(c&&c.name){var k=String(c.name).trim().toLowerCase();if(k&&!(k in m))m[k]=1}})}catch(e){}
-  [].forEach.call(t.querySelectorAll('tr>td:nth-child(2)'),function(td){
-    if(td.querySelector('.tbCl')||td.children.length)return;var name=(td.textContent||'').trim();if(!name||!m[name.toLowerCase()])return;
-    var sp=document.createElement('span');sp.className='tbCl';sp.dataset.n=name;sp.title='Ouvrir la fiche client';sp.textContent=name;td.textContent='';td.appendChild(sp)});
+var D=Object.getOwnPropertyDescriptor(Element.prototype,'innerHTML');if(!D||!D.set||Element.prototype.__tbStab)return;
+Element.prototype.__tbStab=1;
+var EXDOC='#invoice-paper,#printInvoice,#viewInvoiceModal,.invoice-a4,#blView,#ofView,.of-page,.bl-paper,.payslip-paper';
+var FORM=/<(select|textarea)\b|<input\b(?![^>]*type\s*=\s*["']?(checkbox|radio|hidden))/i;
+var last=new WeakMap(),pend=new Map(),sched=false;
+function eligible(el,v){return (el.tagName==='TBODY'||el.tagName==='TABLE'||/<(tr|table)\b/i.test(v))&&!el.classList.contains('page')&&el.isConnected&&el.closest('.page')&&!el.closest(EXDOC)}
+function hasForm(el){return !!el.querySelector('select,textarea,input:not([type=checkbox]):not([type=radio]):not([type=hidden])')}
+function polish(tb){
+  try{if(window.tbClinkScan)window.tbClinkScan(tb)}catch(e){}
+  try{if(window.tbPolish)window.tbPolish(tb.closest('.page')||tb)}catch(e){}
+  try{if(window.TBLang&&localStorage.getItem('tb_lang')==='ar')window.TBLang.apply()}catch(e){}
 }
-function polish(tb,extra){try{if(extra)extra(tb)}catch(e){}try{if(window.tbPolish)window.tbPolish(tb.closest('.page')||tb)}catch(e){}}
-function stable(name,id,extra){
-  var f=window[name];if(typeof f!=='function'||f.__tbStab)return;var last=null;
-  var w=function(){
-    var tb=document.getElementById(id),old=tb?[].slice.call(tb.childNodes):null,r=f.apply(this,arguments);
-    try{tb=document.getElementById(id);if(tb){var base=tb.innerHTML;
-      if(last!==null&&base===last&&old&&old.length){if(tb.firstChild!==old[0]||tb.childNodes.length!==old.length){tb.textContent='';old.forEach(function(n){tb.appendChild(n)})}}
-      else{last=base;polish(tb,extra)}}}catch(e){}
-    return r};
-  w.__tbStab=1;window[name]=w;
+function check(){var list=pend;pend=new Map();
+  list.forEach(function(old,tb){try{
+    if(!tb.isConnected)return;var now=D.get.call(tb),prev=last.get(tb);
+    if(prev!==undefined&&now===prev&&old.length&&!hasForm(tb)){
+      /* même contenu : on remet les lignes déjà affichées (avec l'état des cases venant du nouveau rendu) */
+      var nb=[].slice.call(tb.querySelectorAll('input[type=checkbox],input[type=radio]')).map(function(i){return i.checked});
+      if(tb.firstChild!==old[0]||tb.childNodes.length!==old.length){var f=document.createDocumentFragment();old.forEach(function(n){f.appendChild(n)});tb.textContent='';tb.appendChild(f)}
+      var ob=tb.querySelectorAll('input[type=checkbox],input[type=radio]');if(ob.length===nb.length)[].forEach.call(ob,function(i,k){i.checked=nb[k]});
+    }else{last.set(tb,now);polish(tb)}
+  }catch(e){}});
 }
-stable('updateStats','recent',clink);
-stable('renderRegister','registerrows');
+Object.defineProperty(Element.prototype,'innerHTML',{configurable:true,enumerable:D.enumerable,get:D.get,set:function(v){
+  var sv=String(v);if(!(this instanceof HTMLElement)||!eligible(this,sv)||FORM.test(sv)||hasForm(this))return D.set.call(this,v);
+  if(!pend.has(this))pend.set(this,[].slice.call(this.childNodes));
+  D.set.call(this,v);
+  if(!sched){sched=true;Promise.resolve().then(function(){sched=false;check()})} /* après les réactions des autres scripts à ce rendu */
+}});
 })();
 </script>
 </body></html>
